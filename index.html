@@ -1,0 +1,2226 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Tegn Din Egen Racer</title>
+<style>
+  /* ===== Base / page ===== */
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%; overflow: hidden;
+    background: #1d2b53;
+    font-family: "Comic Sans MS", "Chalkboard SE", "Trebuchet MS", sans-serif;
+    user-select: none; -webkit-user-select: none;
+    touch-action: none;             /* no browser pan/zoom while drawing or driving */
+  }
+
+  /* ===== Stage: fixed logical 1280x720, scaled to fit the window ===== */
+  #stage {
+    position: absolute; left: 0; top: 0;
+    width: 1280px; height: 720px;
+    transform-origin: 0 0;
+    background: #fff7e0;
+    overflow: hidden;
+    border-radius: 18px;
+  }
+
+  /* ===== Screens: only one is visible at a time ===== */
+  .screen {
+    position: absolute; inset: 0;
+    display: none;
+    flex-direction: column; align-items: center; justify-content: center;
+    gap: 28px;
+  }
+  .screen.active { display: flex; }
+
+  h1 { margin: 0; font-size: 64px; color: #e8433c; text-shadow: 4px 4px 0 #ffd23f; }
+  h2 { margin: 0; font-size: 48px; color: #1d2b53; }
+  p.hint { margin: 0; font-size: 28px; color: #5a5a7a; }
+
+  /* ===== Big friendly buttons and inputs ===== */
+  button.big {
+    font: inherit; font-size: 36px; font-weight: bold;
+    padding: 18px 48px; min-width: 220px;
+    border: none; border-radius: 22px;
+    background: #2fbf71; color: #fff;
+    box-shadow: 0 8px 0 #1e8a50;
+    cursor: pointer;
+  }
+  button.big:active { transform: translateY(6px); box-shadow: 0 2px 0 #1e8a50; }
+  button.big.blue   { background: #3a86ff; box-shadow: 0 8px 0 #2560c0; }
+  button.big.orange { background: #ff8c42; box-shadow: 0 8px 0 #c5641f; }
+
+  input.big {
+    font: inherit; font-size: 44px; text-align: center;
+    width: 760px; padding: 16px 24px;
+    border: 6px solid #3a86ff; border-radius: 22px;
+    outline: none; background: #fff; color: #1d2b53;
+  }
+  input.big:focus { border-color: #ff8c42; }
+
+  .msg { min-height: 40px; font-size: 30px; color: #e8433c; font-weight: bold; }
+  .row { display: flex; gap: 24px; }
+
+  /* ===== Car drawing screen ===== */
+  #screen-cars { justify-content: flex-start; gap: 14px; padding: 18px 28px; }
+  .cars-header { display: flex; align-items: center; gap: 28px; height: 60px; }
+  .badge {
+    font-size: 30px; font-weight: bold; padding: 6px 22px; border-radius: 30px;
+    background: #d9dbe6; color: #4a4a6a;
+  }
+  .badge.mine { background: #ffd23f; color: #b3261e; font-size: 34px; animation: wiggle 1s ease-in-out infinite; }
+  @keyframes wiggle { 0%,100% { transform: rotate(-3deg); } 50% { transform: rotate(3deg); } }
+
+  .cars-main { display: flex; gap: 22px; }
+  .canvas-wrap {
+    position: relative; width: 800px; height: 440px;
+    border: 6px solid #1d2b53; border-radius: 18px; overflow: hidden; background: #fff;
+  }
+  .canvas-wrap canvas { position: absolute; left: 0; top: 0; width: 800px; height: 440px; }
+  #car-canvas { cursor: crosshair; touch-action: none; }
+
+  .tools { width: 360px; display: flex; flex-direction: column; gap: 14px; }
+  .palette { display: grid; grid-template-columns: repeat(4, 72px); gap: 14px; justify-content: center; }
+  .swatch {
+    width: 72px; height: 72px; border-radius: 50%;
+    border: 5px solid #fff; box-shadow: 0 0 0 2px #bbb; cursor: pointer; padding: 0;
+  }
+  .swatch.selected, .size.selected, .tool.selected { box-shadow: 0 0 0 6px #1d2b53; }
+  .sizes { display: flex; gap: 14px; justify-content: center; }
+  .size {
+    width: 96px; height: 72px; border-radius: 16px; border: none;
+    background: #fff; box-shadow: 0 0 0 2px #bbb; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; padding: 0;
+  }
+  .size span { display: block; border-radius: 50%; background: #1d2b53; }
+  .tool-row { display: flex; gap: 14px; justify-content: center; }
+  button.tool {
+    font: inherit; font-size: 26px; font-weight: bold;
+    flex: 1; height: 68px; border: none; border-radius: 16px;
+    background: #fff; color: #1d2b53; box-shadow: 0 0 0 2px #bbb; cursor: pointer;
+  }
+  button.tool:active { background: #e6ecff; }
+
+  .cars-footer { display: flex; align-items: center; gap: 24px; width: 1182px; }
+  .previews { display: flex; gap: 14px; }
+  .preview { display: flex; flex-direction: column; align-items: center; font-size: 20px; color: #5a5a7a; }
+  .preview canvas {
+    width: 150px; height: 82px; background: #fff;
+    border: 4px dashed #bbb; border-radius: 12px;
+  }
+  .preview.current canvas { border: 4px solid #ff8c42; }
+  .preview.done canvas { border: 4px solid #2fbf71; }
+  .cars-footer .msg { flex: 1; text-align: center; }
+
+  /* ===== Garage (all 3 cars finished) ===== */
+  .garage { display: flex; gap: 30px; }
+  .garage-slot { display: flex; flex-direction: column; align-items: center; gap: 10px; font-size: 30px; font-weight: bold; color: #1d2b53; }
+  .garage-slot canvas {
+    width: 340px; height: 210px; background: #fff;
+    border: 6px solid #1d2b53; border-radius: 18px;
+  }
+  .garage-slot.mine canvas { border-color: #ffd23f; box-shadow: 0 0 0 6px #ff8c42; }
+  .garage-slot.mine { color: #e8433c; }
+
+  /* ===== Track drawing screen ===== */
+  #track-canvas { position: absolute; left: 0; top: 0; width: 1280px; height: 720px; touch-action: none; cursor: crosshair; }
+  .track-banner {
+    position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
+    padding: 10px 30px; border-radius: 22px;
+    background: rgba(255, 255, 255, 0.88); color: #1d2b53;
+    font-size: 30px; font-weight: bold; white-space: nowrap;
+    pointer-events: none;   /* drawing goes through to the canvas */
+  }
+  .track-msg {
+    position: absolute; bottom: 120px; left: 50%; transform: translateX(-50%);
+    padding: 12px 30px; border-radius: 22px;
+    background: #ffd23f; color: #b3261e; font-size: 32px; font-weight: bold; white-space: nowrap;
+    pointer-events: none;
+  }
+  .track-msg:empty { display: none; }
+  .track-msg.good { background: #2fbf71; color: #fff; }
+  .track-buttons { position: absolute; right: 24px; bottom: 28px; display: flex; gap: 20px; }
+  button.big:disabled { opacity: 0.4; cursor: default; }
+
+  /* ===== Choose track + difficulty ===== */
+  #screen-setup { justify-content: flex-start; gap: 18px; padding-top: 24px; }
+  .setup-row { display: flex; gap: 40px; }
+  .diff-row { display: flex; gap: 12px; align-items: center; font-size: 28px; font-weight: bold; color: #1d2b53; }
+  button.opt {
+    font: inherit; font-size: 26px; font-weight: bold; line-height: 1.1;
+    padding: 8px 18px; border-radius: 18px; border: 5px solid transparent;
+    color: #fff; cursor: pointer; opacity: 0.5;
+  }
+  button.opt small { display: block; font-size: 18px; }
+  button.opt.selected { opacity: 1; border-color: #1d2b53; transform: scale(1.08); }
+  .track-grid { display: grid; grid-template-columns: repeat(3, 300px); gap: 20px; }
+  button.track-card {
+    font: inherit; font-size: 26px; font-weight: bold; color: #1d2b53;
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    padding: 10px; border: none; border-radius: 18px;
+    background: #fff; box-shadow: 0 6px 0 #c9c2a8; cursor: pointer;
+  }
+  button.track-card:active { transform: translateY(4px); box-shadow: 0 2px 0 #c9c2a8; }
+  .track-card canvas, .track-card .pencil { width: 280px; height: 158px; border-radius: 10px; }
+  .track-card .pencil {
+    display: flex; align-items: center; justify-content: center;
+    font-size: 90px; background: #fff7e0; border: 4px dashed #ff8c42;
+  }
+  .track-card.draw { background: #ffd23f; box-shadow: 0 6px 0 #c9a21f; }
+  .track-card.mine { background: #ffe1c9; }
+  button.small.left { right: auto; left: 14px; }
+
+  /* ===== Touch controls (race) ===== */
+  .touch-controls { display: none; }
+  .touch-controls.show { display: block; }
+  .touch-btn {
+    position: absolute; width: 140px; height: 140px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 64px; color: #fff; text-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
+    background: rgba(255, 255, 255, 0.28); border: 5px solid rgba(255, 255, 255, 0.75);
+    touch-action: none; user-select: none; -webkit-user-select: none; cursor: pointer;
+  }
+  .touch-btn.gas   { background: rgba(47, 191, 113, 0.45); }
+  .touch-btn.brake { background: rgba(232, 67, 60, 0.45); }
+  .touch-btn.pressed { transform: scale(0.92); background: rgba(255, 255, 255, 0.65); }
+  button.small.sound { right: 236px; }
+
+  /* ===== Results / podium ===== */
+  #screen-results { gap: 18px; }
+  #confetti { position: absolute; left: 0; top: 0; width: 1280px; height: 720px; pointer-events: none; }
+  .podium { display: flex; align-items: flex-end; gap: 18px; }
+  .step { width: 270px; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .step canvas { width: 230px; height: 120px; }
+  .step .name { font-size: 28px; font-weight: bold; color: #1d2b53; }
+  .step.mine .name { color: #e8433c; }
+  .step.mine canvas { filter: drop-shadow(0 0 10px #ffd23f); }
+  .step .block {
+    width: 100%; border-radius: 18px 18px 0 0;
+    display: flex; justify-content: center; padding-top: 6px;
+    font-size: 64px; font-weight: bold; color: #fff; text-shadow: 3px 3px 0 rgba(0, 0, 0, 0.2);
+  }
+  .step.p1 .block { height: 170px; background: #ffd23f; }
+  .step.p2 .block { height: 120px; background: #b8c0cc; }
+  .step.p3 .block { height: 80px;  background: #e0a060; }
+  .step.p1 canvas { animation: bounce 0.8s ease-in-out infinite; }
+  @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-12px); } }
+
+  /* ===== Race screen ===== */
+  #race-canvas { position: absolute; left: 0; top: 0; width: 1280px; height: 720px; touch-action: none; }
+  button.small {
+    font: inherit; font-size: 22px; font-weight: bold;
+    position: absolute; top: 14px; right: 14px;
+    padding: 8px 18px; border: none; border-radius: 14px;
+    background: rgba(255, 255, 255, 0.8); color: #1d2b53; cursor: pointer;
+  }
+</style>
+</head>
+<body>
+
+<div id="stage">
+
+  <!-- 1. Team name -->
+  <section class="screen" id="screen-team">
+    <h1>Tegn Din Egen Racer!</h1>
+    <h2>Hvad hedder dit racerhold?</h2>
+    <input class="big" id="team-input" type="text" maxlength="20" autocomplete="off" placeholder="Skriv navnet her">
+    <div class="msg" id="team-msg"></div>
+    <button class="big" id="team-next">Næste</button>
+  </section>
+
+  <!-- 2. Draw cars (repeated 3 times) -->
+  <section class="screen" id="screen-cars">
+    <div class="cars-header">
+      <h2 id="cars-title">Tegn bil 1 af 3</h2>
+      <div class="badge" id="cars-badge"></div>
+    </div>
+    <div class="cars-main">
+      <div class="canvas-wrap">
+        <canvas id="car-guide"  width="800" height="440"></canvas>  <!-- faint arrow, not part of the car -->
+        <canvas id="car-canvas" width="800" height="440"></canvas>  <!-- the actual drawing -->
+      </div>
+      <div class="tools">
+        <div class="palette" id="palette"></div>
+        <div class="sizes" id="sizes"></div>
+        <div class="tool-row"><button class="tool" id="tool-eraser">🧽 Viskelæder</button></div>
+        <div class="tool-row">
+          <button class="tool" id="tool-undo">↶ Fortryd</button>
+          <button class="tool" id="tool-clear">🗑 Ryd</button>
+        </div>
+      </div>
+    </div>
+    <div class="cars-footer">
+      <div class="previews" id="car-previews"></div>
+      <div class="msg" id="cars-msg"></div>
+      <button class="big" id="cars-done">Færdig</button>
+    </div>
+  </section>
+
+  <!-- 2b. Garage: preview of the three finished cars -->
+  <section class="screen" id="screen-garage">
+    <h1>Dine biler er klar!</h1>
+    <div class="garage" id="garage"></div>
+    <div class="row">
+      <button class="big orange" id="garage-redo">Tegn bilerne om</button>
+      <button class="big" id="garage-next">Videre til banen</button>
+    </div>
+  </section>
+
+  <!-- 3a. Choose a track (premade / draw your own) and a difficulty -->
+  <section class="screen" id="screen-setup">
+    <h1>Vælg bane</h1>
+    <div class="setup-row">
+      <div class="diff-row" id="diff-row">Sværhed:</div>
+      <div class="diff-row" id="players-row">Spillere:</div>
+    </div>
+    <div class="track-grid" id="track-grid"></div>
+  </section>
+
+  <!-- 3b. Draw track -->
+  <section class="screen" id="screen-track">
+    <canvas id="track-canvas" width="1280" height="720"></canvas>
+    <div class="track-banner">Tegn en stor runde – og slut der, hvor du startede! 🏁</div>
+    <button class="small left" id="track-back">← Tilbage</button>
+    <div class="track-msg" id="track-msg"></div>
+    <div class="track-buttons">
+      <button class="big orange" id="track-clear">Ryd</button>
+      <button class="big" id="track-go" disabled>Kør! 🏎️</button>
+    </div>
+  </section>
+
+  <!-- 4. Race -->
+  <section class="screen" id="screen-race">
+    <canvas id="race-canvas" width="1280" height="720"></canvas>
+    <button class="small" id="race-next">↺ Genstart løb</button>
+    <button class="small sound" id="sound-toggle">🔊</button>
+    <!-- On-screen buttons for tablets (shown on touch devices) -->
+    <div class="touch-controls" id="touch-controls">
+      <div class="touch-btn" data-action="left"  style="left: 24px;  bottom: 24px;">◀</div>
+      <div class="touch-btn" data-action="right" style="left: 184px; bottom: 24px;">▶</div>
+      <div class="touch-btn brake" data-action="brake" style="right: 184px; bottom: 24px;">▼</div>
+      <div class="touch-btn gas"   data-action="gas"   style="right: 24px;  bottom: 24px;">▲</div>
+    </div>
+  </section>
+
+  <!-- 5. Results -->
+  <section class="screen" id="screen-results">
+    <h1 id="results-title">Resultater</h1>
+    <p class="hint" id="results-sub"></p>
+    <div class="podium" id="podium"></div>
+    <canvas id="confetti" width="1280" height="720"></canvas>
+    <div class="row">
+      <button class="big" id="btn-again">Kør igen</button>
+      <button class="big blue" id="btn-newtrack">Ny bane / sværhed</button>
+      <button class="big orange" id="btn-restart">Start forfra</button>
+    </div>
+  </section>
+
+</div>
+
+<script>
+"use strict";
+
+/* =====================================================================
+   TUNABLE CONSTANTS  (change these to tweak the game)
+   ===================================================================== */
+const GAME_W = 1280;            // logical game width
+const GAME_H = 720;             // logical game height
+const TEAM_NAME_MAX = 20;       // max characters in team name
+const NUM_CARS = 3;             // cars 1-2 = computer, car 3 = player
+const NUM_LAPS = 3;
+
+// Car drawing
+const CAR_PALETTE = ["#222222", "#e8433c", "#ff8c42", "#ffd23f",
+                     "#2fbf71", "#3a86ff", "#9b5de5", "#f15bb5"];
+const BRUSH_SIZES = [6, 14, 28];   // small / medium / large
+const ERASER_SCALE = 1.8;          // eraser is a bit bigger than the brush
+const CROP_PADDING = 6;            // px of empty space kept around a cropped car
+const MIN_CAR_SIZE = 40;           // drawing must be at least this wide or tall (px)
+const UNDO_LIMIT = 25;
+
+// Track
+const ROAD_WIDTH = 80;             // asphalt width in px
+const TRACK_SPACING = 9;           // distance between centerline points
+const MIN_TRACK_LENGTH = 1400;     // shortest allowed lap (px)
+const MIN_TRACK_SIZE = 220;        // track must be at least this wide OR tall
+const CLOSE_DISTANCE = 90;         // end this close to start = loop gets closed
+const CONTINUE_DISTANCE = 80;      // touch this close to the line's end to keep drawing
+const TRACK_MARGIN = ROAD_WIDTH / 2 + 6;   // keep the road inside the screen
+
+// Cars on the track
+const CAR_LENGTH = 46;             // drawn car length in px (front to back)
+const CAR_MAX_WIDTH = 32;          // very tall drawings are shrunk to fit this
+
+// Player driving (speeds in px per second)
+const PLAYER_MAX_SPEED = 320;
+const PLAYER_ACCEL = 300;          // gas
+const PLAYER_BRAKE = 550;          // brake when moving forward
+const PLAYER_REVERSE_MAX = 110;
+const PLAYER_TURN_RATE = 3.0;      // radians per second at decent speed
+const COAST_FRICTION = 140;        // slowing down when no pedal is pressed
+const OFFROAD_FACTOR = 0.4;        // max speed on grass = this x normal max speed
+const OFFROAD_DRAG = 500;          // how fast a car slows down to the grass speed
+
+// ---- Computer cars: DIFFICULTY lives here ----
+// maxSpeed is in px/s (the player's is PLAYER_MAX_SPEED above).
+// Lower these numbers to make the race easier.
+const AI_CARS = [
+  { name: "Robo-Raket",  maxSpeed: 290 },   // car 1: the faster one
+  { name: "Turbo-Snegl", maxSpeed: 268 },   // car 2: the slower one
+];
+const AI_ACCEL = 240;
+const AI_TURN_RATE = 4.2;
+const AI_LOOKAHEAD = 0.4;          // steer toward a point this many seconds ahead (min 5, max 14 points)
+const AI_CORNER_LOOK = 22;         // look this far ahead to spot corners
+const AI_WOBBLE = 0.05;            // +/- 5% speed wobble during the race
+const AI_SEE_AHEAD = 110;          // px: a car this close in front makes the AI change lane
+const AI_PASS_LANE = ROAD_WIDTH * 0.27;   // sideways offset used when overtaking
+
+// ---- Difficulty levels (engine classes) ----
+// speed:      multiplies ALL cars' top speed and acceleration (higher class = faster race)
+// ai:         extra multiplier on the computer cars only (how close they are to the player)
+// aiCorner:   how much computer cars slow down in sharp corners (0.5 = to half speed)
+const DIFFICULTIES = {
+  "50":  { label: "50cc",  name: "Let",    color: "#2fbf71", speed: 0.85, ai: 0.95, aiCorner: 0.35 },
+  "100": { label: "100cc", name: "Mellem", color: "#ff8c42", speed: 1.00, ai: 1.00, aiCorner: 0.30 },
+  "150": { label: "150cc", name: "Svær",   color: "#e8433c", speed: 1.15, ai: 1.06, aiCorner: 0.25 },
+};
+const DEFAULT_DIFFICULTY = "50";
+const AI_RACE_RANDOM = 0.04;       // +/- 4% random speed per race
+
+// Race rules
+const START_SLOTS = { ai0: 0, player: 1, ai1: 2 };  // grid slot 0 is closest to the line
+const COUNTDOWN_SECONDS = 3;
+const CAR_RADIUS = CAR_LENGTH * 0.4;   // for car-to-car bumps
+const PROGRESS_WINDOW = 20;        // track points searched around a car's last position
+const CHECKPOINT_ZONE = 0.1;       // checkpoint k counts within +/-10% of the track around it
+const FINISH_DELAY = 3;            // seconds of "MÅL!" before the results screen
+
+// ---- Multiplayer (1-3 players on one keyboard) ----
+// Player 1 drives car 3 (his car). Player 2 takes car 1, player 3 takes car 2;
+// any car without a player is driven by the computer.
+// With only 1 player, both the arrow keys and WASD work for him.
+const PLAYER_KEYS = [
+  { label: "← ↑ → ↓", gas: "ArrowUp", brake: "ArrowDown", left: "ArrowLeft", right: "ArrowRight" },
+  { label: "W A S D", gas: "KeyW",    brake: "KeyS",      left: "KeyA",      right: "KeyD" },
+  { label: "U H J K", gas: "KeyU",    brake: "KeyJ",      left: "KeyH",      right: "KeyK" },
+];
+const PLAYER_COLORS = ["#ffd23f", "#4cc9f0", "#f15bb5"];   // marker colors for player 1, 2, 3
+const MULTI_FINISH_WAIT = 15;      // seconds the others get after the first player finishes
+
+/* =====================================================================
+   GAME STATE  (shared between screens)
+   ===================================================================== */
+const game = {
+  teamName: "",
+  cars: [],          // offscreen canvases with the drawn cars (phase 2)
+  track: null,       // the track being raced: { points, length, image }
+  drawnTrack: null,  // the last track he drew himself (offered again as "Din bane")
+  difficulty: DEFAULT_DIFFICULTY,
+  numPlayers: 1,     // 1-3 human players
+};
+const level = () => DIFFICULTIES[game.difficulty];
+
+/* =====================================================================
+   STAGE SCALING
+   Keeps the 1280x720 stage centered and scaled to fit the window.
+   toGame() converts a pointer event into logical game coordinates.
+   ===================================================================== */
+const stage = document.getElementById("stage");
+let stageScale = 1;
+
+function fitStage() {
+  stageScale = Math.min(window.innerWidth / GAME_W, window.innerHeight / GAME_H);
+  const offX = (window.innerWidth  - GAME_W * stageScale) / 2;
+  const offY = (window.innerHeight - GAME_H * stageScale) / 2;
+  stage.style.transform = `translate(${offX}px, ${offY}px) scale(${stageScale})`;
+}
+window.addEventListener("resize", fitStage);
+fitStage();
+
+// Convert a pointer event to coordinates inside an element (e.g. a canvas),
+// in that element's own logical pixels, regardless of how the stage is scaled.
+function toLocal(evt, el) {
+  const r = el.getBoundingClientRect();
+  return {
+    x: (evt.clientX - r.left) * (el.width  || el.offsetWidth)  / r.width,
+    y: (evt.clientY - r.top)  * (el.height || el.offsetHeight) / r.height,
+  };
+}
+
+/* =====================================================================
+   SCREEN MANAGER
+   Each screen can have an onEnter() hook that runs when it is shown.
+   ===================================================================== */
+const screens = {
+  team:    { el: document.getElementById("screen-team"),    onEnter: enterTeam },
+  cars:    { el: document.getElementById("screen-cars"),    onEnter: enterCars },
+  garage:  { el: document.getElementById("screen-garage"),  onEnter: enterGarage },
+  setup:   { el: document.getElementById("screen-setup"),   onEnter: enterSetup },
+  track:   { el: document.getElementById("screen-track"),   onEnter: enterTrack },
+  race:    { el: document.getElementById("screen-race"),    onEnter: enterRace },
+  results: { el: document.getElementById("screen-results"), onEnter: enterResults },
+};
+let currentScreen = null;
+
+function showScreen(name) {
+  for (const key in screens) screens[key].el.classList.toggle("active", key === name);
+  currentScreen = name;
+  if (screens[name].onEnter) screens[name].onEnter();
+}
+
+/* =====================================================================
+   SCREEN 1: TEAM NAME
+   ===================================================================== */
+const teamInput = document.getElementById("team-input");
+const teamMsg   = document.getElementById("team-msg");
+
+function enterTeam() {
+  teamInput.value = game.teamName;
+  teamMsg.textContent = "";
+  setTimeout(() => teamInput.focus(), 50);
+}
+
+function submitTeam() {
+  const name = teamInput.value.trim().slice(0, TEAM_NAME_MAX);
+  if (!name) {
+    teamMsg.textContent = "Dit hold skal have et navn!";
+    teamInput.focus();
+    return;
+  }
+  game.teamName = name;
+  game.cars = [];
+  carIndex = 0;
+  showScreen("cars");
+}
+
+document.getElementById("team-next").addEventListener("click", submitTeam);
+teamInput.addEventListener("keydown", e => { if (e.key === "Enter") submitTeam(); });
+teamInput.addEventListener("input", () => { teamMsg.textContent = ""; });
+
+/* =====================================================================
+   SCREEN 2: DRAW CARS
+   Two stacked canvases: car-guide (white + faint arrow) underneath and
+   car-canvas (transparent, the real drawing) on top. Only car-canvas is
+   cropped and stored, so the arrow never ends up on the car.
+   Cars 0 and 1 are computer cars, car 2 (the last) is the player's.
+   ===================================================================== */
+let carIndex = 0;   // which car (0..2) is being drawn
+
+const carCanvas = document.getElementById("car-canvas");
+const carCtx    = carCanvas.getContext("2d", { willReadFrequently: true });
+const guideCtx  = document.getElementById("car-guide").getContext("2d");
+const carsMsg   = document.getElementById("cars-msg");
+
+const brush = {
+  color: CAR_PALETTE[0],
+  size: BRUSH_SIZES[1],
+  eraser: false,
+  pointerId: null,   // the pointer currently drawing (ignore extra fingers)
+  last: null,        // last point of the current stroke
+  undo: [],          // stack of ImageData snapshots
+};
+
+// --- Build palette, brush sizes and tool buttons ---
+function buildCarTools() {
+  const palette = document.getElementById("palette");
+  CAR_PALETTE.forEach(color => {
+    const b = document.createElement("button");
+    b.className = "swatch";
+    b.style.background = color;
+    b.addEventListener("click", () => { brush.color = color; brush.eraser = false; updateToolSelection(); });
+    b.dataset.color = color;
+    palette.appendChild(b);
+  });
+
+  const sizes = document.getElementById("sizes");
+  BRUSH_SIZES.forEach(size => {
+    const b = document.createElement("button");
+    b.className = "size";
+    const dot = document.createElement("span");
+    dot.style.width = dot.style.height = Math.max(size, 8) + "px";
+    b.appendChild(dot);
+    b.dataset.size = size;
+    b.addEventListener("click", () => { brush.size = size; updateToolSelection(); });
+    sizes.appendChild(b);
+  });
+
+  document.getElementById("tool-eraser").addEventListener("click", () => { brush.eraser = !brush.eraser; updateToolSelection(); });
+  document.getElementById("tool-undo").addEventListener("click", undoStroke);
+  document.getElementById("tool-clear").addEventListener("click", clearDrawing);
+  document.getElementById("cars-done").addEventListener("click", finishCar);
+}
+
+function updateToolSelection() {
+  document.querySelectorAll(".swatch").forEach(b =>
+    b.classList.toggle("selected", !brush.eraser && b.dataset.color === brush.color));
+  document.querySelectorAll(".size").forEach(b =>
+    b.classList.toggle("selected", Number(b.dataset.size) === brush.size));
+  document.getElementById("tool-eraser").classList.toggle("selected", brush.eraser);
+  // Show the selected color on the size dots
+  document.querySelectorAll(".size span").forEach(s => s.style.background = brush.eraser ? "#bbb" : brush.color);
+}
+
+// --- Faint "front of the car points this way" arrow ---
+function drawCarGuide() {
+  const w = guideCtx.canvas.width, h = guideCtx.canvas.height;
+  guideCtx.fillStyle = "#fff";
+  guideCtx.fillRect(0, 0, w, h);
+  guideCtx.strokeStyle = guideCtx.fillStyle = "rgba(29, 43, 83, 0.13)";
+  guideCtx.lineWidth = 14;
+  guideCtx.lineCap = "round";
+  // shaft
+  guideCtx.beginPath();
+  guideCtx.moveTo(200, h / 2);
+  guideCtx.lineTo(560, h / 2);
+  guideCtx.stroke();
+  // head
+  guideCtx.beginPath();
+  guideCtx.moveTo(620, h / 2);
+  guideCtx.lineTo(540, h / 2 - 50);
+  guideCtx.lineTo(540, h / 2 + 50);
+  guideCtx.closePath();
+  guideCtx.fill();
+  // text
+  guideCtx.font = "bold 30px 'Comic Sans MS', sans-serif";
+  guideCtx.textAlign = "center";
+  guideCtx.fillText("Bilens forende peger denne vej →", w / 2, 60);
+}
+
+// --- Drawing with pointer events (mouse, finger, pen) ---
+function drawSegment(a, b) {
+  carCtx.globalCompositeOperation = brush.eraser ? "destination-out" : "source-over";
+  const size = brush.eraser ? brush.size * ERASER_SCALE : brush.size;
+  carCtx.strokeStyle = carCtx.fillStyle = brush.color;
+  if (a.x === b.x && a.y === b.y) {
+    // a single tap = a round dot
+    carCtx.beginPath();
+    carCtx.arc(a.x, a.y, size / 2, 0, Math.PI * 2);
+    carCtx.fill();
+  } else {
+    carCtx.lineWidth = size;
+    carCtx.lineCap = "round";
+    carCtx.lineJoin = "round";
+    carCtx.beginPath();
+    carCtx.moveTo(a.x, a.y);
+    carCtx.lineTo(b.x, b.y);
+    carCtx.stroke();
+  }
+  carCtx.globalCompositeOperation = "source-over";
+}
+
+carCanvas.addEventListener("pointerdown", e => {
+  if (brush.pointerId !== null) return;          // already drawing with another finger
+  e.preventDefault();
+  carCanvas.setPointerCapture(e.pointerId);
+  brush.pointerId = e.pointerId;
+  pushUndo();
+  carsMsg.textContent = "";
+  brush.last = toLocal(e, carCanvas);
+  drawSegment(brush.last, brush.last);
+});
+
+carCanvas.addEventListener("pointermove", e => {
+  if (e.pointerId !== brush.pointerId) return;
+  // Coalesced events give smoother lines on fast finger/pen movement
+  const events = (e.getCoalescedEvents && e.getCoalescedEvents().length) ? e.getCoalescedEvents() : [e];
+  for (const ev of events) {
+    const p = toLocal(ev, carCanvas);
+    drawSegment(brush.last, p);
+    brush.last = p;
+  }
+});
+
+function endStroke(e) {
+  if (e.pointerId !== brush.pointerId) return;
+  brush.pointerId = null;
+  brush.last = null;
+}
+carCanvas.addEventListener("pointerup", endStroke);
+carCanvas.addEventListener("pointercancel", endStroke);
+
+// --- Undo / clear ---
+function pushUndo() {
+  brush.undo.push(carCtx.getImageData(0, 0, carCanvas.width, carCanvas.height));
+  if (brush.undo.length > UNDO_LIMIT) brush.undo.shift();
+}
+
+function undoStroke() {
+  const snap = brush.undo.pop();
+  if (snap) carCtx.putImageData(snap, 0, 0);
+}
+
+function clearDrawing() {
+  pushUndo();   // so "Ryd" can be undone too
+  carCtx.clearRect(0, 0, carCanvas.width, carCanvas.height);
+  carsMsg.textContent = "";
+}
+
+// --- Crop the drawing to its bounding box (scan alpha) ---
+// Returns an offscreen canvas, "empty" or "tiny".
+function cropDrawing() {
+  const w = carCanvas.width, h = carCanvas.height;
+  const data = carCtx.getImageData(0, 0, w, h).data;
+  let minX = w, minY = h, maxX = -1, maxY = -1;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (data[(y * w + x) * 4 + 3] > 16) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+  if (maxX < 0) return "empty";
+  const bw = maxX - minX + 1, bh = maxY - minY + 1;
+  if (bw < MIN_CAR_SIZE && bh < MIN_CAR_SIZE) return "tiny";
+
+  const out = document.createElement("canvas");
+  out.width  = bw + CROP_PADDING * 2;
+  out.height = bh + CROP_PADDING * 2;
+  out.getContext("2d").drawImage(carCanvas, minX, minY, bw, bh, CROP_PADDING, CROP_PADDING, bw, bh);
+  return out;
+}
+
+function finishCar() {
+  const result = cropDrawing();
+  if (result === "empty") { carsMsg.textContent = "Du har ikke tegnet noget endnu! 🎨"; return; }
+  if (result === "tiny")  { carsMsg.textContent = "Bilen er lidt lille – tegn den større! 🔍"; return; }
+  game.cars[carIndex] = result;
+  carIndex++;
+  if (carIndex < NUM_CARS) enterCars();
+  else showScreen("garage");
+}
+
+// --- Draw an image centered and scaled to fit inside a canvas ---
+function drawFit(ctx, img, margin = 8) {
+  const w = ctx.canvas.width, h = ctx.canvas.height;
+  ctx.clearRect(0, 0, w, h);
+  if (!img) return;
+  const s = Math.min((w - margin * 2) / img.width, (h - margin * 2) / img.height);
+  const dw = img.width * s, dh = img.height * s;
+  ctx.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
+}
+
+function carLabel(i) {
+  return i === NUM_CARS - 1 ? "DIN bil ⭐" : `${AI_CARS[i].name} 🤖`;
+}
+
+// --- Small previews of the cars at the bottom ---
+function renderCarPreviews() {
+  const box = document.getElementById("car-previews");
+  box.innerHTML = "";
+  for (let i = 0; i < NUM_CARS; i++) {
+    const slot = document.createElement("div");
+    slot.className = "preview" + (i === carIndex ? " current" : game.cars[i] ? " done" : "");
+    const c = document.createElement("canvas");
+    c.width = 150; c.height = 82;
+    drawFit(c.getContext("2d"), game.cars[i], 6);
+    const label = document.createElement("div");
+    label.textContent = carLabel(i);
+    slot.append(c, label);
+    box.appendChild(slot);
+  }
+}
+
+function enterCars() {
+  const isMine = carIndex === NUM_CARS - 1;
+  document.getElementById("cars-title").textContent = `Tegn bil ${carIndex + 1} af ${NUM_CARS}`;
+  const badge = document.getElementById("cars-badge");
+  badge.textContent = isMine ? "Det her er DIN bil! ⭐" : "Computerbil 🤖";
+  badge.classList.toggle("mine", isMine);
+
+  carCtx.clearRect(0, 0, carCanvas.width, carCanvas.height);
+  brush.undo = [];
+  brush.pointerId = null;
+  brush.eraser = false;
+  carsMsg.textContent = "";
+  updateToolSelection();
+  renderCarPreviews();
+}
+
+/* =====================================================================
+   SCREEN 2b: GARAGE  (shows the three finished cars)
+   ===================================================================== */
+function enterGarage() {
+  const box = document.getElementById("garage");
+  box.innerHTML = "";
+  for (let i = 0; i < NUM_CARS; i++) {
+    const slot = document.createElement("div");
+    slot.className = "garage-slot" + (i === NUM_CARS - 1 ? " mine" : "");
+    const c = document.createElement("canvas");
+    c.width = 340; c.height = 210;
+    drawFit(c.getContext("2d"), game.cars[i], 16);
+    const label = document.createElement("div");
+    label.textContent = carLabel(i);
+    slot.append(c, label);
+    box.appendChild(slot);
+  }
+}
+
+document.getElementById("garage-redo").addEventListener("click", () => {
+  game.cars = [];
+  carIndex = 0;
+  showScreen("cars");
+});
+document.getElementById("garage-next").addEventListener("click", () => showScreen("setup"));
+
+buildCarTools();
+drawCarGuide();
+
+/* =====================================================================
+   GEOMETRY HELPERS
+   ===================================================================== */
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+function pathLength(pts, closed = false) {
+  let L = 0;
+  for (let i = 1; i < pts.length; i++) L += dist(pts[i - 1], pts[i]);
+  if (closed && pts.length > 1) L += dist(pts[pts.length - 1], pts[0]);
+  return L;
+}
+
+// Distance from point p to the line segment a-b
+function distToSegment(p, a, b) {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const L2 = dx * dx + dy * dy;
+  if (L2 === 0) return dist(p, a);
+  const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / L2));
+  return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+}
+
+// Ramer-Douglas-Peucker: removes small wobbles from a hand-drawn line
+function simplifyPath(pts, epsilon) {
+  if (pts.length < 3) return pts.slice();
+  const a = pts[0], b = pts[pts.length - 1];
+  let maxD = 0, idx = 0;
+  for (let i = 1; i < pts.length - 1; i++) {
+    const d = distToSegment(pts[i], a, b);
+    if (d > maxD) { maxD = d; idx = i; }
+  }
+  if (maxD <= epsilon) return [a, b];
+  const left  = simplifyPath(pts.slice(0, idx + 1), epsilon);
+  const right = simplifyPath(pts.slice(idx), epsilon);
+  return left.slice(0, -1).concat(right);
+}
+
+// Chaikin corner cutting on a closed loop: rounds off sharp corners
+function chaikinClosed(pts, iterations) {
+  let cur = pts;
+  for (let it = 0; it < iterations; it++) {
+    const next = [];
+    for (let i = 0; i < cur.length; i++) {
+      const p = cur[i], q = cur[(i + 1) % cur.length];
+      next.push({ x: 0.75 * p.x + 0.25 * q.x, y: 0.75 * p.y + 0.25 * q.y });
+      next.push({ x: 0.25 * p.x + 0.75 * q.x, y: 0.25 * p.y + 0.75 * q.y });
+    }
+    cur = next;
+  }
+  return cur;
+}
+
+// Evenly spaced points around a closed loop
+function resampleClosed(pts, spacing) {
+  const segs = [];
+  let total = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i], b = pts[(i + 1) % pts.length];
+    const L = dist(a, b);
+    if (L > 0) { segs.push({ a, b, L }); total += L; }
+  }
+  const n = Math.max(8, Math.round(total / spacing));
+  const step = total / n;
+  const out = [];
+  let s = 0, acc = 0;
+  for (let k = 0; k < n; k++) {
+    const target = k * step;
+    while (s < segs.length - 1 && acc + segs[s].L < target) { acc += segs[s].L; s++; }
+    const t = Math.min(1, (target - acc) / segs[s].L);
+    out.push({ x: segs[s].a.x + (segs[s].b.x - segs[s].a.x) * t,
+               y: segs[s].a.y + (segs[s].b.y - segs[s].a.y) * t });
+  }
+  return out;
+}
+
+/* =====================================================================
+   TRACK RENDERING  (also used by the race)
+   ===================================================================== */
+// Grass with little tufts, made once
+const grassImage = (() => {
+  const c = document.createElement("canvas");
+  c.width = GAME_W; c.height = GAME_H;
+  const g = c.getContext("2d");
+  g.fillStyle = "#6ab04c";
+  g.fillRect(0, 0, GAME_W, GAME_H);
+  for (let i = 0; i < 2600; i++) {
+    const x = Math.random() * GAME_W, y = Math.random() * GAME_H;
+    g.strokeStyle = Math.random() < 0.5 ? "#5a9e3e" : "#7cc35a";
+    g.lineWidth = 2;
+    g.beginPath();
+    g.moveTo(x, y);
+    g.lineTo(x + (Math.random() - 0.5) * 4, y - 4 - Math.random() * 5);
+    g.stroke();
+  }
+  return c;
+})();
+
+function tracePath(ctx, pts, closed) {
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+  if (closed) ctx.closePath();
+}
+
+// Kerbs (red/white), asphalt, dashed center line
+function drawRoad(ctx, pts, closed) {
+  if (pts.length < 2) return;
+  ctx.save();
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+  tracePath(ctx, pts, closed);
+  ctx.lineWidth = ROAD_WIDTH + 14;
+  ctx.strokeStyle = "#ffffff";
+  ctx.stroke();
+  ctx.setLineDash([22, 22]);
+  ctx.lineCap = "butt";
+  ctx.strokeStyle = "#e8433c";
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.lineCap = "round";
+  ctx.lineWidth = ROAD_WIDTH;
+  ctx.strokeStyle = "#4a4a52";
+  ctx.stroke();
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.85)";
+  ctx.setLineDash([18, 16]);
+  ctx.lineCap = "butt";
+  ctx.stroke();
+  ctx.restore();
+}
+
+// Unit direction of the track at point i
+function trackDir(pts, i) {
+  const n = pts.length;
+  const a = pts[(i - 1 + n) % n], b = pts[(i + 1) % n];
+  const L = dist(a, b) || 1;
+  return { x: (b.x - a.x) / L, y: (b.y - a.y) / L };
+}
+
+// Checkered start/finish line across the road at point 0
+function drawStartLine(ctx, pts) {
+  const d = trackDir(pts, 0);
+  const sq = ROAD_WIDTH / 8;
+  ctx.save();
+  ctx.translate(pts[0].x, pts[0].y);
+  ctx.rotate(Math.atan2(d.y, d.x));
+  for (let i = 0; i < 8; i++) {
+    for (let j = 0; j < 2; j++) {
+      ctx.fillStyle = (i + j) % 2 ? "#111" : "#fff";
+      ctx.fillRect((j - 1) * sq, -ROAD_WIDTH / 2 + i * sq, sq, sq);
+    }
+  }
+  ctx.restore();
+}
+
+// Faint arrows on the road showing which way to drive
+function drawDirectionArrows(ctx, pts) {
+  ctx.save();
+  ctx.fillStyle = "rgba(255, 255, 255, 0.35)";
+  for (const f of [0.08, 0.3, 0.5, 0.7, 0.9]) {
+    const i = Math.floor(pts.length * f);
+    const d = trackDir(pts, i);
+    ctx.save();
+    ctx.translate(pts[i].x, pts[i].y);
+    ctx.rotate(Math.atan2(d.y, d.x));
+    for (const off of [-14, 6]) {
+      ctx.beginPath();
+      ctx.moveTo(off + 14, 0);
+      ctx.lineTo(off, -16);
+      ctx.lineTo(off + 6, 0);
+      ctx.lineTo(off, 16);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+// The complete static track picture (cached for the race)
+function buildTrackImage(pts) {
+  const c = document.createElement("canvas");
+  c.width = GAME_W; c.height = GAME_H;
+  const ctx = c.getContext("2d");
+  ctx.drawImage(grassImage, 0, 0);
+  drawRoad(ctx, pts, true);
+  drawDirectionArrows(ctx, pts);
+  drawStartLine(ctx, pts);
+  return c;
+}
+
+/* =====================================================================
+   SCREEN 3: DRAW TRACK
+   He draws one line. On release we look for the point near the end
+   that comes back closest to the start; if it is close enough the loop
+   is closed there (so overshooting the start is fine).
+   Raw line -> simplify -> Chaikin smooth -> resample = centerline.
+   ===================================================================== */
+const trackCanvas = document.getElementById("track-canvas");
+const trackCtx    = trackCanvas.getContext("2d");
+const trackMsg    = document.getElementById("track-msg");
+const trackGoBtn  = document.getElementById("track-go");
+
+const trk = {
+  raw: [],           // points as drawn
+  pointerId: null,
+  track: null,       // finished track { points, length, image }
+  renderQueued: false,
+};
+
+function setTrackMsg(text, good = false) {
+  trackMsg.textContent = text;
+  trackMsg.classList.toggle("good", good);
+}
+
+function clampToTrackArea(p) {
+  return {
+    x: Math.min(GAME_W - TRACK_MARGIN, Math.max(TRACK_MARGIN, p.x)),
+    y: Math.min(GAME_H - TRACK_MARGIN, Math.max(TRACK_MARGIN, p.y)),
+  };
+}
+
+function renderTrackScreen() {
+  trk.renderQueued = false;
+  const ctx = trackCtx;
+  if (trk.track) { ctx.drawImage(trk.track.image, 0, 0); return; }
+  ctx.drawImage(grassImage, 0, 0);
+  if (!trk.raw.length) return;
+  drawRoad(ctx, trk.raw, false);
+  // Start marker, plus a ring showing where to finish once the line is long enough
+  const s = trk.raw[0];
+  if (pathLength(trk.raw) > 300) {
+    ctx.save();
+    ctx.setLineDash([12, 10]);
+    ctx.lineWidth = 5;
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
+    ctx.fillStyle = "rgba(255, 255, 255, 0.18)";
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, CLOSE_DISTANCE, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+  ctx.fillStyle = "#fff";
+  ctx.strokeStyle = "#1d2b53";
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.arc(s.x, s.y, 24, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.font = "28px sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("🏁", s.x, s.y + 1);
+}
+
+function queueTrackRender() {
+  if (!trk.renderQueued) { trk.renderQueued = true; requestAnimationFrame(renderTrackScreen); }
+}
+
+trackCanvas.addEventListener("pointerdown", e => {
+  if (trk.pointerId !== null) return;
+  e.preventDefault();
+  if (trk.track) { setTrackMsg("Tryk på Ryd for at tegne en ny bane"); return; }
+  const p = clampToTrackArea(toLocal(e, trackCanvas));
+  if (trk.raw.length) {
+    // An unfinished line exists: only continue from its end
+    if (dist(p, trk.raw[trk.raw.length - 1]) > CONTINUE_DISTANCE) {
+      setTrackMsg("Fortsæt fra enden af stregen – eller tryk Ryd");
+      return;
+    }
+  } else {
+    trk.raw = [p];
+  }
+  trackCanvas.setPointerCapture(e.pointerId);
+  trk.pointerId = e.pointerId;
+  setTrackMsg("");
+  queueTrackRender();
+});
+
+trackCanvas.addEventListener("pointermove", e => {
+  if (e.pointerId !== trk.pointerId) return;
+  const events = (e.getCoalescedEvents && e.getCoalescedEvents().length) ? e.getCoalescedEvents() : [e];
+  for (const ev of events) {
+    const p = clampToTrackArea(toLocal(ev, trackCanvas));
+    if (dist(p, trk.raw[trk.raw.length - 1]) >= 4) trk.raw.push(p);
+  }
+  queueTrackRender();
+});
+
+function endTrackStroke(e) {
+  if (e.pointerId !== trk.pointerId) return;
+  trk.pointerId = null;
+  tryCloseTrack();
+  queueTrackRender();
+}
+trackCanvas.addEventListener("pointerup", endTrackStroke);
+trackCanvas.addEventListener("pointercancel", endTrackStroke);
+
+// Find where the line comes back to the start (searching from the end)
+function findClosingIndex(raw) {
+  const start = raw[0];
+  const minI = Math.floor(raw.length * 0.5);
+  let i = raw.length - 1;
+  while (i >= minI && dist(raw[i], start) > CLOSE_DISTANCE) i--;
+  if (i < minI) return -1;
+  // Walk back through the "near start" stretch and pick the closest point
+  let best = i;
+  while (i >= minI && dist(raw[i], start) <= CLOSE_DISTANCE) {
+    if (dist(raw[i], start) < dist(raw[best], start)) best = i;
+    i--;
+  }
+  return best;
+}
+
+function tryCloseTrack() {
+  const raw = trk.raw;
+  if (raw.length < 2) { trk.raw = []; return; }
+  const closeAt = findClosingIndex(raw);
+  if (closeAt < 0) {
+    setTrackMsg("Kør hen til starten 🏁 for at lukke banen");
+    return;
+  }
+  const loop = raw.slice(0, closeAt + 1);
+  const xs = loop.map(p => p.x), ys = loop.map(p => p.y);
+  const size = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+  if (pathLength(loop, true) < MIN_TRACK_LENGTH || size < MIN_TRACK_SIZE) {
+    setTrackMsg("Banen er for lille – tegn en større runde! 📏");
+    trk.raw = [];
+    return;
+  }
+  const points = processTrack(loop);
+  trk.track = { points, length: pathLength(points, true), image: buildTrackImage(points) };
+  setTrackMsg("Flot bane! Tryk på Kør! 🏁", true);
+  trackGoBtn.disabled = false;
+}
+
+// Raw loop -> smooth, evenly spaced centerline
+function processTrack(loop) {
+  let pts = simplifyPath(loop, 2.5);
+  if (pts.length > 3 && dist(pts[0], pts[pts.length - 1]) < 12) pts.pop();  // avoid a doubled point
+  pts = chaikinClosed(pts, 3);
+  return resampleClosed(pts, TRACK_SPACING);
+}
+
+function enterTrack() {
+  trk.raw = [];
+  trk.track = null;
+  trk.pointerId = null;
+  trackGoBtn.disabled = true;
+  setTrackMsg("");
+  renderTrackScreen();
+}
+
+document.getElementById("track-clear").addEventListener("click", enterTrack);
+document.getElementById("track-back").addEventListener("click", () => showScreen("setup"));
+trackGoBtn.addEventListener("click", () => {
+  if (!trk.track) return;
+  game.track = trk.track;
+  game.drawnTrack = trk.track;
+  showScreen("race");
+});
+
+/* =====================================================================
+   PREMADE TRACKS
+   Each shape is a rough loop of points in the 1280x720 game area; it goes
+   through the same smoothing as a drawn track. Point 0 = start line, and
+   the cars drive in the order the points are listed.
+   To add a track: add an entry with a name and a shape() function.
+   ===================================================================== */
+const PREMADE_TRACKS = [
+  {
+    name: "Ovalen",
+    shape: () => {
+      const pts = [];
+      for (let k = 0; k < 120; k++) {
+        const a = Math.PI + k / 120 * Math.PI * 2;
+        pts.push({ x: 640 + Math.cos(a) * 480, y: 380 + Math.sin(a) * 235 });
+      }
+      return pts;
+    },
+  },
+  {
+    name: "Ottetallet",
+    shape: () => {
+      const pts = [];
+      for (let k = 0; k < 200; k++) {
+        const t = -Math.PI / 2 + k / 200 * Math.PI * 2;
+        pts.push({ x: 640 + Math.sin(t) * 500, y: 375 + Math.sin(2 * t) * 235 });
+      }
+      return pts;
+    },
+  },
+  {
+    name: "Slangen",
+    shape: () => {
+      // rounded rectangle whose bottom edge snakes up in two big bumps
+      const pts = [], pow = (v, e) => Math.sign(v) * Math.abs(v) ** e;
+      for (let k = 0; k < 240; k++) {
+        const a = Math.PI + k / 240 * Math.PI * 2;
+        const x = 640 + 490 * pow(Math.cos(a), 0.6);
+        let y = 375 + 225 * pow(Math.sin(a), 0.6);
+        if (Math.sin(a) > 0) {
+          const u = (x - 150) / 980;
+          y -= 170 * Math.sin(a) ** 3 * (0.5 - 0.5 * Math.cos(u * Math.PI * 4));
+        }
+        pts.push({ x, y });
+      }
+      return pts;
+    },
+  },
+  {
+    name: "Bjergpasset",
+    shape: () => [   // sharp hairpin dip in the middle - brake!
+      { x: 150, y: 450 }, { x: 150, y: 140 }, { x: 420, y: 140 }, { x: 420, y: 420 },
+      { x: 590, y: 420 }, { x: 590, y: 140 }, { x: 1130, y: 140 }, { x: 1130, y: 600 },
+      { x: 150, y: 600 },
+    ],
+  },
+];
+
+// Built once, the first time the choose-track screen is shown
+let premadeBuilt = null;
+function getPremadeTracks() {
+  if (!premadeBuilt) {
+    premadeBuilt = PREMADE_TRACKS.map(t => {
+      const points = processTrack(t.shape());
+      return { name: t.name, points, length: pathLength(points, true), image: buildTrackImage(points) };
+    });
+  }
+  return premadeBuilt;
+}
+
+/* =====================================================================
+   SCREEN 3a: CHOOSE TRACK + DIFFICULTY
+   ===================================================================== */
+function buildDifficultyButtons() {
+  const row = document.getElementById("diff-row");
+  for (const key in DIFFICULTIES) {
+    const d = DIFFICULTIES[key];
+    const b = document.createElement("button");
+    b.className = "opt diff";
+    b.style.background = d.color;
+    b.dataset.key = key;
+    b.innerHTML = `${d.label}<small>${d.name}</small>`;
+    b.addEventListener("click", () => { game.difficulty = key; updateDifficultyButtons(); });
+    row.appendChild(b);
+  }
+}
+
+// 1, 2 or 3 players; the small text shows the keys the newest player uses
+function buildPlayerButtons() {
+  const row = document.getElementById("players-row");
+  const hints = ["Pile / WASD", "+ W A S D", "+ U H J K"];
+  for (let n = 1; n <= PLAYER_KEYS.length; n++) {
+    const b = document.createElement("button");
+    b.className = "opt pcount";
+    b.style.background = "#3a86ff";
+    b.dataset.n = n;
+    b.innerHTML = `${"👤".repeat(n)}<small>${hints[n - 1]}</small>`;
+    b.addEventListener("click", () => { game.numPlayers = n; updateDifficultyButtons(); });
+    row.appendChild(b);
+  }
+}
+
+function updateDifficultyButtons() {
+  document.querySelectorAll("button.diff").forEach(b =>
+    b.classList.toggle("selected", b.dataset.key === game.difficulty));
+  document.querySelectorAll("button.pcount").forEach(b =>
+    b.classList.toggle("selected", Number(b.dataset.n) === game.numPlayers));
+}
+
+function trackCard(title, className, track, onClick) {
+  const b = document.createElement("button");
+  b.className = "track-card " + className;
+  if (track) {
+    const c = document.createElement("canvas");
+    c.width = 280; c.height = 158;
+    c.getContext("2d").drawImage(track.image, 0, 0, 280, 158);
+    b.appendChild(c);
+  } else {
+    const p = document.createElement("div");
+    p.className = "pencil";
+    p.textContent = "✏️";
+    b.appendChild(p);
+  }
+  const label = document.createElement("div");
+  label.textContent = title;
+  b.appendChild(label);
+  b.addEventListener("click", onClick);
+  return b;
+}
+
+function raceOn(track) {
+  game.track = track;
+  showScreen("race");
+}
+
+function enterSetup() {
+  updateDifficultyButtons();
+  const grid = document.getElementById("track-grid");
+  grid.innerHTML = "";
+  grid.appendChild(trackCard("Tegn selv!", "draw", null, () => showScreen("track")));
+  if (game.drawnTrack) grid.appendChild(trackCard("Din bane ⭐", "mine", game.drawnTrack, () => raceOn(game.drawnTrack)));
+  for (const t of getPremadeTracks()) grid.appendChild(trackCard(t.name, "", t, () => raceOn(t)));
+}
+
+buildDifficultyButtons();
+buildPlayerButtons();
+
+/* =====================================================================
+   KEYBOARD INPUT  (see PLAYER_KEYS at the top)
+   We just remember which keys are held; controlsFor() turns that into
+   gas/brake/left/right for one player.
+   ===================================================================== */
+const ACTIONS = ["gas", "brake", "left", "right"];
+const keysDown = new Set();
+const GAME_KEYS = new Set(PLAYER_KEYS.flatMap(k => ACTIONS.map(a => k[a])));
+
+window.addEventListener("keydown", e => {
+  if (!GAME_KEYS.has(e.code) || currentScreen !== "race") return;
+  keysDown.add(e.code);
+  e.preventDefault();   // stop arrow keys from scrolling
+});
+window.addEventListener("keyup", e => keysDown.delete(e.code));
+window.addEventListener("blur", () => keysDown.clear());
+
+// Key sets used by player i (single player may use arrows OR WASD)
+function keySetsFor(i) {
+  return game.numPlayers === 1 ? [PLAYER_KEYS[0], PLAYER_KEYS[1]] : [PLAYER_KEYS[i]];
+}
+
+/* =====================================================================
+   TOUCH INPUT  (on-screen buttons, multi-touch)
+   Each button remembers which fingers are on it, so gas + steering with
+   two fingers works, and lifting one finger doesn't release the other.
+   ===================================================================== */
+const touchFingers = { gas: new Set(), brake: new Set(), left: new Set(), right: new Set() };
+const touchControls = document.getElementById("touch-controls");
+
+document.querySelectorAll(".touch-btn").forEach(btn => {
+  const action = btn.dataset.action;
+  const press = e => {
+    e.preventDefault();
+    touchFingers[action].add(e.pointerId);
+    btn.classList.add("pressed");
+  };
+  const release = e => {
+    touchFingers[action].delete(e.pointerId);
+    if (!touchFingers[action].size) btn.classList.remove("pressed");
+  };
+  btn.addEventListener("pointerdown", press);
+  btn.addEventListener("pointerup", release);
+  btn.addEventListener("pointercancel", release);
+  btn.addEventListener("lostpointercapture", release);
+  btn.addEventListener("contextmenu", e => e.preventDefault());   // long-press menu
+});
+
+function clearTouch() {
+  for (const k in touchFingers) touchFingers[k].clear();
+  document.querySelectorAll(".touch-btn").forEach(b => b.classList.remove("pressed"));
+}
+
+// Show the buttons on touch screens, or as soon as anyone touches the screen
+function showTouchControls() { touchControls.classList.add("show"); }
+if (navigator.maxTouchPoints > 0 || window.matchMedia("(pointer: coarse)").matches) showTouchControls();
+window.addEventListener("pointerdown", e => { if (e.pointerType === "touch") showTouchControls(); });
+
+// Keyboard (+ touch buttons for player 1) combined into { gas, brake, left, right }
+const NO_CONTROLS = { gas: false, brake: false, left: false, right: false };
+function controlsFor(i) {
+  const c = {};
+  for (const a of ACTIONS) {
+    c[a] = keySetsFor(i).some(keys => keysDown.has(keys[a])) || (i === 0 && touchFingers[a].size > 0);
+  }
+  return c;
+}
+
+/* =====================================================================
+   SOUND  (tiny WebAudio beeps, no sound files)
+   The AudioContext is created on the first click/key press, because
+   browsers only allow sound after the user has interacted.
+   ===================================================================== */
+const sound = {
+  ctx: null,
+  muted: false,
+  engine: null,   // { osc, gain, filter } while racing
+};
+try { sound.muted = localStorage.getItem("racer-muted") === "1"; } catch (e) { /* storage blocked */ }
+
+function ensureAudio() {
+  if (sound.ctx) { if (sound.ctx.state === "suspended") sound.ctx.resume(); return; }
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (AC) sound.ctx = new AC();
+}
+window.addEventListener("pointerdown", ensureAudio);
+window.addEventListener("keydown", ensureAudio);
+
+// One short tone. type: "sine" | "square" | "triangle" | "sawtooth"
+function beep(freq, duration, type = "square", volume = 0.15, delay = 0) {
+  if (sound.muted || !sound.ctx) return;
+  const t = sound.ctx.currentTime + delay;
+  const osc = sound.ctx.createOscillator();
+  const gain = sound.ctx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, t);
+  gain.gain.setValueAtTime(volume, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + duration);
+  osc.connect(gain).connect(sound.ctx.destination);
+  osc.start(t);
+  osc.stop(t + duration + 0.02);
+}
+
+const sfx = {
+  count:  () => beep(440, 0.25, "square", 0.12),
+  go:     () => beep(880, 0.5, "square", 0.14),
+  lap:    () => { beep(660, 0.12, "triangle", 0.2); beep(990, 0.25, "triangle", 0.2, 0.12); },
+  bump:   () => beep(90, 0.15, "sawtooth", 0.18),
+  finish: () => [523, 659, 784, 1047].forEach((f, i) => beep(f, i === 3 ? 0.6 : 0.18, "triangle", 0.2, i * 0.15)),
+  win:    () => [523, 659, 784, 659, 784, 1047].forEach((f, i) => beep(f, i === 5 ? 0.8 : 0.16, "square", 0.12, i * 0.14)),
+};
+
+// Engine hum for the player's car: pitch follows speed
+function startEngine() {
+  if (sound.muted || !sound.ctx || sound.engine) return;
+  const osc = sound.ctx.createOscillator();
+  const filter = sound.ctx.createBiquadFilter();
+  const gain = sound.ctx.createGain();
+  osc.type = "sawtooth";
+  osc.frequency.value = 45;
+  filter.type = "lowpass";
+  filter.frequency.value = 500;
+  gain.gain.value = 0.035;
+  osc.connect(filter).connect(gain).connect(sound.ctx.destination);
+  osc.start();
+  sound.engine = { osc, gain, filter };
+}
+
+function updateEngine(speed) {
+  if (!sound.engine) return;
+  const t = sound.ctx.currentTime;
+  sound.engine.osc.frequency.setTargetAtTime(45 + Math.abs(speed) * 0.32, t, 0.05);
+}
+
+function stopEngine() {
+  if (!sound.engine) return;
+  const e = sound.engine;
+  sound.engine = null;
+  e.gain.gain.setTargetAtTime(0, sound.ctx.currentTime, 0.1);
+  e.osc.stop(sound.ctx.currentTime + 0.5);
+}
+
+const soundBtn = document.getElementById("sound-toggle");
+function updateSoundButton() { soundBtn.textContent = sound.muted ? "🔇" : "🔊"; }
+soundBtn.addEventListener("click", () => {
+  sound.muted = !sound.muted;
+  try { localStorage.setItem("racer-muted", sound.muted ? "1" : "0"); } catch (e) { /* ignore */ }
+  updateSoundButton();
+  if (sound.muted) stopEngine();
+  else if (currentScreen === "race" && race.state !== "finished") startEngine();
+});
+updateSoundButton();
+
+/* =====================================================================
+   CAR SPRITES
+   The drawing is scaled to CAR_LENGTH and gets a white outline so even
+   a black car is visible on the dark road. Drawings face right, so the
+   sprite is drawn rotated by the car's heading (0 = right).
+   ===================================================================== */
+function makeCarSprite(img) {
+  const s = Math.min(CAR_LENGTH / img.width, CAR_MAX_WIDTH / img.height);
+  const w = Math.max(1, Math.round(img.width * s));
+  const h = Math.max(1, Math.round(img.height * s));
+  const o = 2;   // outline thickness
+  // white silhouette of the car
+  const sil = document.createElement("canvas");
+  sil.width = w; sil.height = h;
+  const sctx = sil.getContext("2d");
+  sctx.drawImage(img, 0, 0, w, h);
+  sctx.globalCompositeOperation = "source-in";
+  sctx.fillStyle = "#fff";
+  sctx.fillRect(0, 0, w, h);
+  // sprite = silhouette stamped around + the car on top
+  const c = document.createElement("canvas");
+  c.width = w + o * 2; c.height = h + o * 2;
+  const ctx = c.getContext("2d");
+  for (let a = 0; a < Math.PI * 2; a += Math.PI / 4) {
+    ctx.drawImage(sil, o + Math.cos(a) * o, o + Math.sin(a) * o);
+  }
+  ctx.drawImage(img, o, o, w, h);
+  return c;
+}
+
+/* =====================================================================
+   TRACK QUERIES
+   ===================================================================== */
+// Nearest centerline point to p (searches the whole track)
+function nearestTrackPoint(track, p) {
+  let best = 0, bestD = Infinity;
+  const pts = track.points;
+  for (let i = 0; i < pts.length; i++) {
+    const dx = pts[i].x - p.x, dy = pts[i].y - p.y;
+    const d = dx * dx + dy * dy;
+    if (d < bestD) { bestD = d; best = i; }
+  }
+  return { index: best, dist: Math.sqrt(bestD) };
+}
+
+// Start grid: slot 0 is closest to the start line, later slots further back,
+// alternating left/right of the center line.
+function gridPosition(track, slot) {
+  const pts = track.points, n = pts.length;
+  const back = Math.round((CAR_LENGTH * 0.9 + slot * CAR_LENGTH * 1.3) / TRACK_SPACING);
+  const i = ((-back) % n + n) % n;
+  const d = trackDir(pts, i);
+  const side = (slot % 2 === 0 ? -1 : 1) * ROAD_WIDTH * 0.22;
+  return {
+    x: pts[i].x - d.y * side,
+    y: pts[i].y + d.x * side,
+    angle: Math.atan2(d.y, d.x),
+    lane: side,   // sideways offset from the center line (+ = right of driving direction)
+  };
+}
+
+/* =====================================================================
+   RACE STATE + CARS
+   ===================================================================== */
+const raceCanvas = document.getElementById("race-canvas");
+const raceCtx    = raceCanvas.getContext("2d");
+
+const race = {
+  cars: [],
+  player: null,
+  frameId: null,
+  lastTime: 0,
+  state: "countdown",  // "countdown" -> "racing" -> "finished"
+  clock: 0,            // seconds since the state started
+  time: 0,             // total seconds since the race screen opened
+  banner: null,        // { text, until } big message in the middle
+  dust: [],            // dust particles
+  lastCount: null,     // last countdown number shown (for the beep)
+};
+
+// A car is driven either by a person (human = { index, name, color, keysLabel })
+// or by the computer (ai = one entry from AI_CARS).
+function makeCar(img, slot, { human = null, ai = null }) {
+  const pos = gridPosition(game.track, slot);
+  const car = {
+    x: pos.x, y: pos.y, angle: pos.angle,
+    speed: 0,
+    img,                         // the original drawing (for the podium)
+    sprite: makeCarSprite(img),
+    isPlayer: !!human,           // true for every human player
+    human,
+    name: human ? human.name : ai.name,
+    offRoad: false,
+    finished: false,             // completed all laps
+    finishOrder: 0,              // 1 = first car over the line after the last lap
+    // lap counting
+    trackIndex: 0,
+    laps: 0,
+    nextCheckpoint: 0,   // 0,1,2 = checkpoints at 25/50/75%, 3 = ready to finish a lap
+    crossedStart: false, // first time over the line (at the start) never counts
+  };
+  car.trackIndex = nearestTrackPoint(game.track, car).index;
+  if (ai) {
+    car.maxSpeed = ai.maxSpeed * level().speed * level().ai
+                 * (1 + (Math.random() * 2 - 1) * AI_RACE_RANDOM);
+    car.phase = Math.random() * 10;
+    car.lane = pos.lane;         // start in the lane of its grid spot
+    car.laneTarget = pos.lane;
+    car.avoidTimer = 0;          // > 0 while it is overtaking someone
+  }
+  return car;
+}
+
+/* =====================================================================
+   PHYSICS
+   ===================================================================== */
+// Gas / brake / steering for the player's car
+// ctl = { gas, brake, left, right } from controls() (or NO_CONTROLS)
+function updatePlayer(car, dt, ctl) {
+  const topSpeed = PLAYER_MAX_SPEED * level().speed;
+  const accel = PLAYER_ACCEL * level().speed;
+  const maxSpeed = topSpeed * (car.offRoad ? OFFROAD_FACTOR : 1);
+
+  if (ctl.gas && !ctl.brake) {
+    car.speed += accel * dt;
+  } else if (ctl.brake && !ctl.gas) {
+    car.speed -= (car.speed > 0 ? PLAYER_BRAKE : accel * 0.6) * dt;
+  } else {
+    // coasting: friction pulls speed toward 0
+    const f = COAST_FRICTION * dt;
+    car.speed = Math.abs(car.speed) <= f ? 0 : car.speed - Math.sign(car.speed) * f;
+  }
+
+  // Above the allowed max (e.g. just drove onto grass): slow down quickly, not instantly
+  if (car.speed > maxSpeed) car.speed = Math.max(maxSpeed, car.speed - OFFROAD_DRAG * dt);
+  if (car.speed < -PLAYER_REVERSE_MAX) car.speed = -PLAYER_REVERSE_MAX;
+
+  // Steering only works when moving, and scales with speed (full at ~1/3 max speed)
+  const steer = (ctl.right ? 1 : 0) - (ctl.left ? 1 : 0);
+  const grip = Math.min(1, Math.abs(car.speed) / (topSpeed * 0.33));
+  car.angle += steer * PLAYER_TURN_RATE * grip * Math.sign(car.speed) * dt;
+}
+
+// Movement, off-road check and screen edges (shared by all cars)
+function moveCar(car, dt) {
+  car.x += Math.cos(car.angle) * car.speed * dt;
+  car.y += Math.sin(car.angle) * car.speed * dt;
+
+  // Screen edges act like soft walls
+  const r = CAR_LENGTH / 2;
+  if (car.x < r || car.x > GAME_W - r || car.y < r || car.y > GAME_H - r) {
+    car.x = Math.min(GAME_W - r, Math.max(r, car.x));
+    car.y = Math.min(GAME_H - r, Math.max(r, car.y));
+    car.speed *= 0.5;
+  }
+
+  const near = nearestTrackPoint(game.track, car);
+  car.offRoad = near.dist > ROAD_WIDTH / 2;
+}
+
+const wrapAngle = a => Math.atan2(Math.sin(a), Math.cos(a));   // to -PI..PI
+
+// Computer driver: steer toward a point ahead on the track, slow down for corners
+function updateAI(car, dt) {
+  const pts = game.track.points, n = pts.length;
+
+  // Someone right in front? Pick the other lane to overtake (and maybe ease off)
+  const blocker = carAhead(car);
+  car.avoidTimer -= dt;
+  if (blocker) {
+    car.laneTarget = blocker.lane >= 0 ? -AI_PASS_LANE : AI_PASS_LANE;
+    car.avoidTimer = 1.2;
+  } else if (car.avoidTimer <= 0 && Math.random() < dt * 0.3) {
+    // otherwise drift a little between lanes now and then
+    car.laneTarget = (Math.random() * 2 - 1) * ROAD_WIDTH * 0.2;
+  }
+  car.lane += (car.laneTarget - car.lane) * Math.min(1, dt * (blocker ? 3 : 0.8));
+
+  const ahead = Math.max(5, Math.min(14, Math.round(car.speed * AI_LOOKAHEAD / TRACK_SPACING)));
+  const li = (car.trackIndex + ahead) % n;
+  const ld = trackDir(pts, li);
+  const tx = pts[li].x - ld.y * car.lane;
+  const ty = pts[li].y + ld.x * car.lane;
+  const diff = wrapAngle(Math.atan2(ty - car.y, tx - car.x) - car.angle);
+
+  // How sharp is the road ahead?
+  const d1 = trackDir(pts, car.trackIndex);
+  const d2 = trackDir(pts, (car.trackIndex + AI_CORNER_LOOK) % n);
+  const corner = Math.abs(wrapAngle(Math.atan2(d2.y, d2.x) - Math.atan2(d1.y, d1.x)));
+  const sharp = Math.min(1, Math.max(corner, Math.abs(diff)) / (Math.PI / 2));
+
+  let target = car.maxSpeed * (1 - level().aiCorner * sharp)
+             * (1 + AI_WOBBLE * Math.sin(race.time * 0.7 + car.phase));
+  if (car.offRoad) target = Math.min(target, car.maxSpeed * OFFROAD_FACTOR);
+  // Still right behind it in the same lane: don't ram it, follow until there is room
+  // (never below 60 px/s, so a parked player can't stop the AI completely)
+  if (blocker && blocker.close) target = Math.min(target, Math.max(60, blocker.car.speed * 0.95));
+
+  if (car.speed < target) car.speed = Math.min(target, car.speed + AI_ACCEL * level().speed * dt);
+  else car.speed = Math.max(target, car.speed - (car.offRoad ? OFFROAD_DRAG : PLAYER_BRAKE * 0.6) * dt);
+
+  const grip = Math.min(1, Math.abs(car.speed) / (car.maxSpeed * 0.33));
+  const steer = Math.max(-1, Math.min(1, diff * 4));
+  car.angle += steer * AI_TURN_RATE * grip * dt;
+}
+
+// The nearest car just in front of `car` and roughly in its path, or null.
+// Returns { car, lane, close }: lane = that car's sideways offset from the
+// center line, close = so near that we must slow down instead of passing.
+function carAhead(car) {
+  const pts = game.track.points;
+  const p = pts[car.trackIndex];
+  const d = trackDir(pts, car.trackIndex);
+  const hx = Math.cos(car.angle), hy = Math.sin(car.angle);
+  let best = null;
+  for (const other of race.cars) {
+    if (other === car) continue;
+    const dx = other.x - car.x, dy = other.y - car.y;
+    const ahead = dx * hx + dy * hy;                 // distance in front of us
+    const side = Math.abs(-dx * hy + dy * hx);       // distance to the side of our path
+    if (ahead <= 0 || ahead > AI_SEE_AHEAD || side > CAR_RADIUS * 2.2) continue;
+    if (best && ahead >= best.ahead) continue;
+    best = {
+      car: other,
+      ahead,
+      lane: (other.x - p.x) * -d.y + (other.y - p.y) * d.x,
+      close: ahead < CAR_RADIUS * 2.6 && side < CAR_RADIUS * 1.6,
+    };
+  }
+  return best;
+}
+
+/* =====================================================================
+   LAP COUNTING
+   - trackIndex follows the car by searching only near its last index,
+     so crossings (figure-eights) don't make it jump to the other road.
+     If the car is far from there (big shortcut over grass), search all.
+   - Checkpoints at 25%, 50%, 75% must be reached in order.
+   - A lap counts only when all three are done AND the car goes forward
+     over the start line (index wraps from the end back to 0).
+   ===================================================================== */
+function updateProgress(car) {
+  const pts = game.track.points, n = pts.length;
+  let best = car.trackIndex, bestD = Infinity;
+  for (let k = -PROGRESS_WINDOW; k <= PROGRESS_WINDOW; k++) {
+    const i = (car.trackIndex + k + n) % n;
+    const dx = pts[i].x - car.x, dy = pts[i].y - car.y;
+    const d = dx * dx + dy * dy;
+    if (d < bestD) { bestD = d; best = i; }
+  }
+  if (Math.sqrt(bestD) > ROAD_WIDTH * 0.75) best = nearestTrackPoint(game.track, car).index;
+
+  const prev = car.trackIndex;
+  car.trackIndex = best;
+
+  // Reached the next checkpoint zone?
+  if (car.nextCheckpoint < 3) {
+    const cp = (car.nextCheckpoint + 1) * 0.25;
+    if (Math.abs(best / n - cp) < CHECKPOINT_ZONE) car.nextCheckpoint++;
+  }
+
+  // Forward over the start line?
+  const forward = (best - prev + n) % n;
+  if (prev > n / 2 && best < n / 2 && forward > 0 && forward < n / 4) {
+    if (!car.crossedStart) {
+      car.crossedStart = true;          // leaving the start grid
+    } else if (car.nextCheckpoint === 3) {
+      car.laps++;
+      car.nextCheckpoint = 0;
+      if (car.laps >= NUM_LAPS && !car.finished) {
+        car.finished = true;
+        car.finishOrder = ++race.finishCount;
+      }
+      if (car.isPlayer) onHumanLap(car);
+    } else if (car.isPlayer) {
+      showBanner(namePrefix(car) + "Kør hele banen rundt! 😉", 2.5);
+    }
+  }
+  if (!car.crossedStart && best < n / 4 && best > 0) car.crossedStart = true;
+}
+
+// Bigger = further ahead in the race
+function raceScore(car) {
+  const n = game.track.points.length;
+  const idx = (!car.crossedStart || (car.nextCheckpoint === 0 && car.trackIndex > n / 2))
+    ? car.trackIndex - n      // still before the line on this lap
+    : car.trackIndex;
+  return car.laps * n + idx;
+}
+
+// Finished cars first (in the order they crossed the line), then by progress
+function standings() {
+  return race.cars.slice().sort((a, b) => {
+    if (a.finished && b.finished) return a.finishOrder - b.finishOrder;
+    if (a.finished !== b.finished) return a.finished ? -1 : 1;
+    return raceScore(b) - raceScore(a);
+  });
+}
+
+/* =====================================================================
+   CAR-TO-CAR BUMPS  (circle check, push apart, lose a little speed)
+   The speed loss happens once per bump, not on every frame two cars
+   touch, so cars rubbing against each other don't keep slowing down.
+   ===================================================================== */
+const BUMP_SPEED_LOSS = 0.92;   // speed is multiplied by this once per bump
+const touching = new Set();     // pairs ("i-j") that were touching last frame
+
+function handleCollisions() {
+  const cars = race.cars;
+  for (let i = 0; i < cars.length; i++) {
+    for (let j = i + 1; j < cars.length; j++) {
+      const a = cars[i], b = cars[j], key = i + "-" + j;
+      let dx = b.x - a.x, dy = b.y - a.y;
+      let d = Math.hypot(dx, dy);
+      if (d >= CAR_RADIUS * 2) { touching.delete(key); continue; }
+      if (d < 0.01) { dx = 1; dy = 0; d = 1; }   // exactly on top of each other
+      const push = (CAR_RADIUS * 2 - d) / 2;
+      a.x -= dx / d * push; a.y -= dy / d * push;
+      b.x += dx / d * push; b.y += dy / d * push;
+      if (!touching.has(key)) {
+        touching.add(key);
+        a.speed *= BUMP_SPEED_LOSS;
+        b.speed *= BUMP_SPEED_LOSS;
+        if (a.isPlayer || b.isPlayer) sfx.bump();
+      }
+    }
+  }
+}
+
+/* =====================================================================
+   RACE EVENTS
+   ===================================================================== */
+function showBanner(text, seconds) {
+  race.banner = { text, until: race.time + seconds };
+}
+
+const isMultiplayer = () => race.humans.length > 1;
+// In multiplayer, messages say who they are for
+const namePrefix = car => isMultiplayer() ? `${car.name}: ` : "";
+
+// A human player completed a lap
+function onHumanLap(car) {
+  if (car.laps >= NUM_LAPS) {
+    if (race.humans.every(h => h.finished)) {
+      endRace();
+    } else {
+      // Others are still driving: they get MULTI_FINISH_WAIT seconds more
+      const place = standings().indexOf(car) + 1;
+      showBanner(`${car.name} i mål som nr. ${place}! 🏁`, 2.5);
+      sfx.finish();
+      if (race.finishDeadline === null) race.finishDeadline = race.time + MULTI_FINISH_WAIT;
+    }
+  } else if (car.laps === NUM_LAPS - 1) {
+    showBanner(namePrefix(car) + "Sidste omgang! 🔥", 1.8);
+    sfx.lap();
+  } else {
+    showBanner(namePrefix(car) + `Omgang ${car.laps + 1}!`, 1.5);
+    sfx.lap();
+  }
+}
+
+// Freeze the standings and show "MÅL!" for a moment before the results
+function endRace() {
+  race.state = "finished";
+  race.clock = 0;
+  race.finishDeadline = null;
+  game.results = standings().map(c => ({
+    name: c.name, isPlayer: c.isPlayer, playerIndex: c.human ? c.human.index : -1, img: c.img,
+  }));
+  if (isMultiplayer()) {
+    showBanner(`${game.results[0].name} vinder! 🏆`, FINISH_DELAY);
+  } else {
+    const place = game.results.findIndex(r => r.isPlayer) + 1;
+    showBanner(place === 1 ? "MÅL! DU VANDT! 🏆" : "MÅL! 🏁", FINISH_DELAY);
+  }
+  stopEngine();
+  sfx.finish();
+}
+
+/* =====================================================================
+   RENDERING
+   ===================================================================== */
+function drawCar(ctx, car) {
+  ctx.save();
+  ctx.translate(car.x, car.y);
+  ctx.rotate(car.angle);
+  // soft shadow
+  ctx.fillStyle = "rgba(0, 0, 0, 0.25)";
+  ctx.beginPath();
+  ctx.ellipse(3, 4, car.sprite.width / 2, car.sprite.height / 2, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.drawImage(car.sprite, -car.sprite.width / 2, -car.sprite.height / 2);
+  ctx.restore();
+}
+
+// Bouncing arrow + name above a player's car (in the player's color).
+// (In multiplayer the HUD shows each player's keys during the countdown.)
+function drawPlayerMarker(ctx, car, time) {
+  const bob = Math.sin(time * 6) * 3;
+  const y = car.y - 34 + bob;
+  ctx.save();
+  ctx.font = "bold 18px 'Comic Sans MS', sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "bottom";
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = "#1d2b53";
+  ctx.fillStyle = car.human.color;
+  ctx.strokeText(car.name, car.x, y - 12);
+  ctx.fillText(car.name, car.x, y - 12);
+  ctx.beginPath();
+  ctx.moveTo(car.x - 9, y - 10);
+  ctx.lineTo(car.x + 9, y - 10);
+  ctx.lineTo(car.x, y);
+  ctx.closePath();
+  ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.restore();
+}
+
+function roundRectPath(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+// Text with a dark outline, readable on any background
+function outlinedText(ctx, text, x, y, size, color) {
+  ctx.font = `bold ${size}px 'Comic Sans MS', sans-serif`;
+  ctx.lineJoin = "round";
+  ctx.lineWidth = Math.max(4, size / 7);
+  ctx.strokeStyle = "#1d2b53";
+  ctx.strokeText(text, x, y);
+  ctx.fillStyle = color;
+  ctx.fillText(text, x, y);
+}
+
+// Multiplayer HUD: one row per player with name, lap and position
+function drawMultiHUD(ctx) {
+  const order = race.state === "finished" ? null : standings();
+  const rowH = 44, h = 16 + rowH * race.humans.length;
+  ctx.save();
+  if (race.cars.some(c => c.x < 380 && c.y < h + 50)) ctx.globalAlpha = 0.35;
+  roundRectPath(ctx, 14, 14, 340, h, 18);
+  ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
+  ctx.fill();
+  race.humans.forEach((car, row) => {
+    const y = 14 + 8 + rowH * row + rowH / 2;
+    const place = order ? order.indexOf(car) + 1
+                        : game.results.findIndex(r => r.playerIndex === car.human.index) + 1;
+    ctx.fillStyle = car.human.color;
+    ctx.strokeStyle = "#1d2b53";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(36, y, 11, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.textBaseline = "middle";
+    ctx.textAlign = "left";
+    ctx.font = "bold 22px 'Comic Sans MS', sans-serif";
+    ctx.fillStyle = "#1d2b53";
+    ctx.fillText(car.name.length > 11 ? car.name.slice(0, 10) + "…" : car.name, 56, y);
+    ctx.font = "bold 18px 'Comic Sans MS', sans-serif";
+    // During the countdown: show each player's keys; later: lap or "I mål"
+    const info = race.state === "countdown" ? car.human.keysLabel
+               : car.finished ? "I mål 🏁" : `Omg. ${Math.min(NUM_LAPS, car.laps + 1)}/${NUM_LAPS}`;
+    ctx.fillText(info, 200, y);
+    ctx.textAlign = "right";
+    outlinedText(ctx, `${place}.`, 340, y + 2, 36, ["#ffd23f", "#e0e0e0", "#e0a060"][place - 1]);
+  });
+  ctx.restore();
+}
+
+// Team name, lap and position (top left)
+function drawHUD(ctx) {
+  if (isMultiplayer()) { drawMultiHUD(ctx); return; }
+  const p = race.player;
+  const place = race.state === "finished"
+    ? game.results.findIndex(r => r.isPlayer) + 1
+    : standings().indexOf(p) + 1;
+  const lap = Math.min(NUM_LAPS, p.laps + 1);
+
+  ctx.save();
+  // Fade the panel if a car is underneath it, so it never hides a car
+  if (race.cars.some(c => c.x < 340 && c.y < 160)) ctx.globalAlpha = 0.35;
+  roundRectPath(ctx, 14, 14, 300, 118, 18);
+  ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
+  ctx.fill();
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
+  ctx.font = "bold 26px 'Comic Sans MS', sans-serif";
+  ctx.fillStyle = "#e8433c";
+  ctx.fillText(game.teamName, 30, 48);
+  ctx.font = "bold 24px 'Comic Sans MS', sans-serif";
+  ctx.fillStyle = "#1d2b53";
+  ctx.fillText(`Omgang ${lap}/${NUM_LAPS}`, 30, 84);
+  ctx.fillText("Plads", 30, 118);
+  ctx.textAlign = "right";
+  outlinedText(ctx, `${place}.`, 296, 118, 66, ["#ffd23f", "#e0e0e0", "#e0a060"][place - 1]);
+  ctx.restore();
+}
+
+// Countdown numbers and other big messages in the middle
+function drawCenterText(ctx) {
+  let text = null, size = 110;
+  if (race.state === "countdown") {
+    text = String(Math.max(1, Math.ceil(COUNTDOWN_SECONDS - race.clock)));
+    size = 180;
+  } else if (race.banner && race.time < race.banner.until) {
+    text = race.banner.text;
+    size = text.length > 6 ? 80 : 160;
+  }
+  ctx.save();
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  // Multiplayer: time left after the first player finished
+  if (race.state === "racing" && race.finishDeadline !== null) {
+    const left = Math.max(0, Math.ceil(race.finishDeadline - race.time));
+    outlinedText(ctx, `Løbet slutter om ${left} ⏱️`, GAME_W / 2, 44, 36, "#fff");
+  }
+  if (text) outlinedText(ctx, text, GAME_W / 2, GAME_H / 2, size, "#ffd23f");
+  ctx.restore();
+}
+
+/* =====================================================================
+   DUST  (brown puffs behind cars driving on the grass)
+   ===================================================================== */
+const MAX_DUST = 300;
+
+function updateDust(dt) {
+  for (const car of race.cars) {
+    if (!car.offRoad || Math.abs(car.speed) < 30) continue;
+    // a few puffs per second, more when faster
+    const count = Math.random() < dt * Math.abs(car.speed) * 0.12 ? 1 : 0;
+    for (let i = 0; i < count && race.dust.length < MAX_DUST; i++) {
+      const back = -Math.sign(car.speed) * CAR_LENGTH * 0.45;
+      race.dust.push({
+        x: car.x + Math.cos(car.angle) * back + (Math.random() - 0.5) * 10,
+        y: car.y + Math.sin(car.angle) * back + (Math.random() - 0.5) * 10,
+        vx: (Math.random() - 0.5) * 30,
+        vy: (Math.random() - 0.5) * 30,
+        age: 0,
+        life: 0.5 + Math.random() * 0.4,
+      });
+    }
+  }
+  for (const d of race.dust) { d.age += dt; d.x += d.vx * dt; d.y += d.vy * dt; }
+  race.dust = race.dust.filter(d => d.age < d.life);
+}
+
+function drawDust(ctx) {
+  for (const d of race.dust) {
+    const t = d.age / d.life;
+    ctx.fillStyle = `rgba(139, 98, 56, ${0.55 * (1 - t)})`;
+    ctx.beginPath();
+    ctx.arc(d.x, d.y, 4 + t * 10, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function drawRace() {
+  const ctx = raceCtx;
+  ctx.drawImage(game.track.image, 0, 0);   // grass, road, center line, start line
+  drawDust(ctx);
+  for (const car of race.cars) drawCar(ctx, car);
+  for (const car of race.humans) drawPlayerMarker(ctx, car, race.time);
+  drawHUD(ctx);
+  drawCenterText(ctx);
+}
+
+/* =====================================================================
+   GAME LOOP  (delta-time based, so 60 Hz and 120 Hz play the same)
+   ===================================================================== */
+function updateRace(dt) {
+  race.time += dt;
+  race.clock += dt;
+
+  if (race.state === "countdown") {
+    // beep once for each number: 3, 2, 1
+    const shown = Math.ceil(COUNTDOWN_SECONDS - race.clock);
+    if (shown !== race.lastCount) { race.lastCount = shown; if (shown > 0) sfx.count(); }
+    if (race.clock >= COUNTDOWN_SECONDS) {
+      race.state = "racing";
+      race.clock = 0;
+      showBanner("KØR!", 0.9);
+      sfx.go();
+      startEngine();
+    }
+    return;   // nobody moves before "KØR!"
+  }
+
+  // Human cars: a player who has finished (or the whole race is over) just rolls to a stop
+  for (const car of race.humans) {
+    const driving = race.state === "racing" && !car.finished;
+    updatePlayer(car, dt, driving ? controlsFor(car.human.index) : NO_CONTROLS);
+  }
+  if (race.state === "racing") {
+    updateEngine(race.player.speed);
+    if (race.finishDeadline !== null && race.time >= race.finishDeadline) endRace();
+  } else if (race.clock >= FINISH_DELAY) {
+    showScreen("results");
+    return;
+  }
+  for (const car of race.cars) if (!car.isPlayer) updateAI(car, dt);
+  for (const car of race.cars) moveCar(car, dt);
+  handleCollisions();
+  for (const car of race.cars) updateProgress(car);
+  updateDust(dt);
+}
+
+function raceFrame(now) {
+  if (currentScreen !== "race") { race.frameId = null; stopEngine(); clearTouch(); return; }
+  const dt = Math.min(0.05, (now - race.lastTime) / 1000);   // clamp after tab switches
+  race.lastTime = now;
+  updateRace(dt);
+  if (currentScreen === "race") drawRace();
+  race.frameId = requestAnimationFrame(raceFrame);
+}
+
+/* =====================================================================
+   SCREEN 4: RACE
+   ===================================================================== */
+function enterRace() {
+  keysDown.clear();
+  clearTouch();
+  stopEngine();
+  race.dust = [];
+  race.lastCount = null;
+  race.finishCount = 0;
+  race.finishDeadline = null;
+
+  // Player 1 = car 3 (his car). Cars 1 and 2 go to players 2 and 3 if they
+  // are playing, otherwise the computer drives them.
+  const n = game.numPlayers;
+  const human = i => ({
+    index: i,
+    name: i === 0 ? game.teamName : `Spiller ${i + 1}`,
+    color: PLAYER_COLORS[i],
+    keysLabel: PLAYER_KEYS[i].label,
+  });
+  race.player = makeCar(game.cars[2], START_SLOTS.player, { human: human(0) });
+  const car1 = makeCar(game.cars[0], START_SLOTS.ai0, n >= 2 ? { human: human(1) } : { ai: AI_CARS[0] });
+  const car2 = makeCar(game.cars[1], START_SLOTS.ai1, n >= 3 ? { human: human(2) } : { ai: AI_CARS[1] });
+  race.cars = [car1, race.player, car2];
+  race.humans = race.cars.filter(c => c.isPlayer).sort((a, b) => a.human.index - b.human.index);
+  race.state = "countdown";
+  race.clock = 0;
+  race.time = 0;
+  race.banner = null;
+  game.results = null;
+  touching.clear();
+  if (race.frameId) cancelAnimationFrame(race.frameId);
+  race.lastTime = performance.now();
+  race.frameId = requestAnimationFrame(raceFrame);
+}
+document.getElementById("race-next").addEventListener("click", enterRace);   // restart this race
+
+/* =====================================================================
+   SCREEN 5: RESULTS  (podium + confetti when he wins)
+   ===================================================================== */
+function enterResults() {
+  const results = game.results || [];
+  const multi = results.filter(r => r.isPlayer).length > 1;
+  const place = results.findIndex(r => r.playerIndex === 0) + 1;   // player 1's place
+  const celebrate = multi ? results[0] && results[0].isPlayer : place === 1;
+
+  const title = document.getElementById("results-title");
+  const sub = document.getElementById("results-sub");
+  if (multi) {
+    const winner = results[0];
+    if (winner.isPlayer) {
+      title.textContent = `🏆 ${winner.name} VANDT! 🏆`;
+      sub.textContent = "Godt kørt alle sammen! Kør igen for en revanche!";
+    } else {
+      title.textContent = `${winner.name} vandt! 🤖`;
+      sub.textContent = "Prøv igen – sammen kan I godt slå computeren!";
+    }
+  } else if (place === 1) {
+    title.textContent = "🏆 DU VANDT! 🏆";
+    sub.textContent = `${game.teamName} er de hurtigste på banen!`;
+  } else if (place === 2) {
+    title.textContent = "Flot kørt – 2. plads! 🥈";
+    sub.textContent = "Så tæt på! Prøv igen – du kan godt vinde!";
+  } else {
+    title.textContent = "3. plads – godt kæmpet! 🥉";
+    sub.textContent = game.difficulty === "50"
+      ? "Prøv igen – hold dig på vejen, så går det hurtigere!"
+      : "Prøv igen – eller vælg en lettere sværhed!";
+  }
+
+  // Podium: 2nd on the left, 1st in the middle, 3rd on the right
+  const podium = document.getElementById("podium");
+  podium.innerHTML = "";
+  for (const i of [1, 0, 2]) {
+    const r = results[i];
+    if (!r) continue;
+    const step = document.createElement("div");
+    step.className = `step p${i + 1}` + (r.isPlayer ? " mine" : "");
+    const c = document.createElement("canvas");
+    c.width = 230; c.height = 120;
+    drawFit(c.getContext("2d"), r.img, 8);
+    const name = document.createElement("div");
+    name.className = "name";
+    name.textContent = r.isPlayer ? `⭐ ${r.name}` : r.name;
+    const block = document.createElement("div");
+    block.className = "block";
+    block.textContent = i + 1;
+    step.append(c, name, block);
+    podium.appendChild(step);
+  }
+
+  if (celebrate) { startConfetti(); sfx.win(); }
+  else clearConfetti();
+}
+
+/* ---- Confetti ---- */
+const confettiCanvas = document.getElementById("confetti");
+const confettiCtx = confettiCanvas.getContext("2d");
+const CONFETTI_COLORS = ["#e8433c", "#ff8c42", "#ffd23f", "#2fbf71", "#3a86ff", "#9b5de5", "#f15bb5"];
+let confetti = [];
+let confettiFrame = null;
+
+function makeConfettiPiece(fromTop) {
+  return {
+    x: Math.random() * GAME_W,
+    y: fromTop ? -20 - Math.random() * 200 : Math.random() * GAME_H,
+    vx: (Math.random() - 0.5) * 80,
+    vy: 120 + Math.random() * 160,
+    rot: Math.random() * Math.PI * 2,
+    vr: (Math.random() - 0.5) * 10,
+    w: 8 + Math.random() * 8,
+    h: 5 + Math.random() * 5,
+    color: CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)],
+  };
+}
+
+function startConfetti() {
+  confetti = [];
+  for (let i = 0; i < 220; i++) confetti.push(makeConfettiPiece(true));
+  const startTime = performance.now();
+  let last = startTime;
+  if (confettiFrame) cancelAnimationFrame(confettiFrame);
+  const frame = now => {
+    if (currentScreen !== "results") { clearConfetti(); return; }
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    const raining = now - startTime < 5000;   // keep it coming for 5 seconds
+    for (const p of confetti) {
+      p.x += (p.vx + Math.sin(now / 300 + p.rot) * 30) * dt;
+      p.y += p.vy * dt;
+      p.rot += p.vr * dt;
+      if (p.y > GAME_H + 20 && raining) Object.assign(p, makeConfettiPiece(true));
+    }
+    confetti = confetti.filter(p => p.y <= GAME_H + 20);
+    confettiCtx.clearRect(0, 0, GAME_W, GAME_H);
+    for (const p of confetti) {
+      confettiCtx.save();
+      confettiCtx.translate(p.x, p.y);
+      confettiCtx.rotate(p.rot);
+      confettiCtx.fillStyle = p.color;
+      confettiCtx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+      confettiCtx.restore();
+    }
+    confettiFrame = confetti.length ? requestAnimationFrame(frame) : null;
+  };
+  confettiFrame = requestAnimationFrame(frame);
+}
+
+function clearConfetti() {
+  if (confettiFrame) cancelAnimationFrame(confettiFrame);
+  confettiFrame = null;
+  confetti = [];
+  confettiCtx.clearRect(0, 0, GAME_W, GAME_H);
+}
+document.getElementById("btn-again").addEventListener("click", () => showScreen("race"));
+document.getElementById("btn-newtrack").addEventListener("click", () => showScreen("setup"));
+document.getElementById("btn-restart").addEventListener("click", () => {
+  game.teamName = ""; game.cars = []; game.track = null; game.drawnTrack = null;
+  showScreen("team");
+});
+
+/* =====================================================================
+   START
+   ===================================================================== */
+showScreen("team");
+</script>
+</body>
+</html>
