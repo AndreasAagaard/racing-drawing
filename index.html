@@ -72,13 +72,22 @@
   .badge.mine { background: #ffd23f; color: #b3261e; font-size: 34px; animation: wiggle 1s ease-in-out infinite; }
   @keyframes wiggle { 0%,100% { transform: rotate(-3deg); } 50% { transform: rotate(3deg); } }
 
-  .cars-main { display: flex; gap: 22px; }
+  .cars-main { display: flex; gap: 16px; }
   .canvas-wrap {
-    position: relative; width: 800px; height: 440px;
+    position: relative; width: 720px; height: 440px;
     border: 6px solid #1d2b53; border-radius: 18px; overflow: hidden; background: #fff;
   }
-  .canvas-wrap canvas { position: absolute; left: 0; top: 0; width: 800px; height: 440px; }
+  .canvas-wrap canvas { position: absolute; left: 0; top: 0; width: 720px; height: 440px; }
   #car-canvas { cursor: crosshair; touch-action: none; }
+  #car-overlay { pointer-events: none; }
+  .stencils { width: 84px; display: flex; flex-direction: column; gap: 5px; }
+  button.stencil {
+    width: 84px; height: 42px; font-size: 26px; padding: 0; border: none; border-radius: 12px;
+    background: #fff; box-shadow: 0 0 0 2px #bbb; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+  button.stencil canvas { width: 72px; height: 36px; }
+  button.stencil.selected { box-shadow: 0 0 0 5px #1d2b53; background: #fff3c4; }
 
   .tools { width: 360px; display: flex; flex-direction: column; gap: 14px; }
   .palette { display: grid; grid-template-columns: repeat(4, 72px); gap: 14px; justify-content: center; }
@@ -111,15 +120,40 @@
   }
   .preview.current canvas { border: 4px solid #ff8c42; }
   .preview.done canvas { border: 4px solid #2fbf71; }
-  .cars-footer .msg { flex: 1; text-align: center; }
+  .cars-footer .msg { flex: 1; text-align: center; font-size: 24px; }
+  .msg.good { color: #1e8a50; }
+  #cars-pick { font-size: 26px; padding: 14px 20px; min-width: 0; }
+  #cars-done { min-width: 180px; }
+
+  /* ===== Premade car picker ===== */
+  .picker {
+    position: absolute; inset: 0; z-index: 10;
+    display: none; align-items: center; justify-content: center;
+    background: rgba(29, 43, 83, 0.6);
+  }
+  .picker.show { display: flex; }
+  .picker-box {
+    display: flex; flex-direction: column; align-items: center; gap: 12px;
+    padding: 18px 30px 24px; border-radius: 24px; background: #fff7e0;
+  }
+  .picker-grid { display: grid; grid-template-columns: repeat(3, 290px); gap: 16px; }
+  button.pick {
+    font: inherit; font-size: 24px; font-weight: bold; color: #1d2b53;
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    padding: 10px; border: none; border-radius: 18px;
+    background: #fff; box-shadow: 0 6px 0 #c9c2a8; cursor: pointer;
+  }
+  button.pick:active { transform: translateY(4px); box-shadow: 0 2px 0 #c9c2a8; }
+  button.pick canvas { width: 260px; height: 130px; }
 
   /* ===== Garage (all 3 cars finished) ===== */
   .garage { display: flex; gap: 30px; }
   .garage-slot { display: flex; flex-direction: column; align-items: center; gap: 10px; font-size: 30px; font-weight: bold; color: #1d2b53; }
   .garage-slot canvas {
-    width: 340px; height: 210px; background: #fff;
+    width: 340px; height: 170px; background: #fff;
     border: 6px solid #1d2b53; border-radius: 18px;
   }
+  .garage-slot canvas.back { height: 110px; margin-top: -4px; }
   .garage-slot.mine canvas { border-color: #ffd23f; box-shadow: 0 0 0 6px #ff8c42; }
   .garage-slot.mine { color: #e8433c; }
 
@@ -146,6 +180,7 @@
   /* ===== Choose track + difficulty ===== */
   #screen-setup { justify-content: flex-start; gap: 18px; padding-top: 24px; }
   .setup-row { display: flex; gap: 40px; }
+  .setup-title { display: flex; align-items: center; gap: 48px; }
   .diff-row { display: flex; gap: 12px; align-items: center; font-size: 28px; font-weight: bold; color: #1d2b53; }
   button.opt {
     font: inherit; font-size: 26px; font-weight: bold; line-height: 1.1;
@@ -229,7 +264,7 @@
     <button class="big" id="team-next">Næste</button>
   </section>
 
-  <!-- 2. Draw cars (repeated 3 times) -->
+  <!-- 2. Draw cars (3 cars, each from the side and from behind) -->
   <section class="screen" id="screen-cars">
     <div class="cars-header">
       <h2 id="cars-title">Tegn bil 1 af 3</h2>
@@ -237,9 +272,11 @@
     </div>
     <div class="cars-main">
       <div class="canvas-wrap">
-        <canvas id="car-guide"  width="800" height="440"></canvas>  <!-- faint arrow, not part of the car -->
-        <canvas id="car-canvas" width="800" height="440"></canvas>  <!-- the actual drawing -->
+        <canvas id="car-guide"   width="720" height="440"></canvas>  <!-- faint hints, not part of the car -->
+        <canvas id="car-canvas"  width="720" height="440"></canvas>  <!-- the actual drawing -->
+        <canvas id="car-overlay" width="720" height="440"></canvas>  <!-- stencil preview -->
       </div>
+      <div class="stencils" id="stencils"></div>
       <div class="tools">
         <div class="palette" id="palette"></div>
         <div class="sizes" id="sizes"></div>
@@ -253,7 +290,17 @@
     <div class="cars-footer">
       <div class="previews" id="car-previews"></div>
       <div class="msg" id="cars-msg"></div>
+      <button class="big blue" id="cars-pick">🚗 Færdige biler</button>
       <button class="big" id="cars-done">Færdig</button>
+    </div>
+    <!-- Pick a premade car -->
+    <div class="picker" id="car-picker">
+      <div class="picker-box">
+        <h2 id="picker-title">Vælg en færdig bil</h2>
+        <p class="hint">Du kan stadig tegne på den bagefter</p>
+        <div class="picker-grid" id="picker-grid"></div>
+        <button class="big orange" id="picker-close">Luk</button>
+      </div>
     </div>
   </section>
 
@@ -269,7 +316,10 @@
 
   <!-- 3a. Choose a track (premade / draw your own) and a difficulty -->
   <section class="screen" id="screen-setup">
-    <h1>Vælg bane</h1>
+    <div class="setup-title">
+      <h1>Vælg bane</h1>
+      <div class="diff-row" id="view-row"></div>
+    </div>
     <div class="setup-row">
       <div class="diff-row" id="diff-row">Sværhed:</div>
       <div class="diff-row" id="players-row">Spillere:</div>
@@ -409,16 +459,31 @@ const PLAYER_KEYS = [
 const PLAYER_COLORS = ["#ffd23f", "#4cc9f0", "#f15bb5"];   // marker colors for player 1, 2, 3
 const MULTI_FINISH_WAIT = 15;      // seconds the others get after the first player finishes
 
+// ---- 3D view ("Mode 7" style: the flat track seen in perspective) ----
+const CAM_DISTANCE = 95;           // how far behind the car the camera sits (track px)
+const CAM_HEIGHT = 42;             // how high the camera is
+const CAM_FOCAL = 1.1;             // zoom: focal length as a fraction of the view height
+const CAM_HORIZON = 0.3;           // where the horizon is (0 = top of the view, 1 = bottom)
+const CAM_FOLLOW = 6;              // how quickly the camera swings round behind the car
+const KART_WIDTH_3D = 36;          // width of a kart seen from behind (track px)
+const FOG_START = 500;             // far away the ground fades into the sky colour...
+const FOG_END = 1600;              // ...completely at this distance
+// Chunky retro pixels: each 3D pixel is this many screen pixels (per split-screen layout)
+const PIXEL_SIZE_FULL = 4;
+const PIXEL_SIZE_SPLIT = 3;
+
 /* =====================================================================
    GAME STATE  (shared between screens)
    ===================================================================== */
 const game = {
   teamName: "",
-  cars: [],          // offscreen canvases with the drawn cars (phase 2)
+  cars: [],          // the side-view drawings (offscreen canvases)
+  carBacks: [],      // the same cars drawn from behind (for the 3D view)
   track: null,       // the track being raced: { points, length, image }
   drawnTrack: null,  // the last track he drew himself (offered again as "Din bane")
   difficulty: DEFAULT_DIFFICULTY,
   numPlayers: 1,     // 1-3 human players
+  view: "3d",        // "3d" = chase camera behind the car (default), "2d" = seen from above
 };
 const level = () => DIFFICULTIES[game.difficulty];
 
@@ -490,8 +555,7 @@ function submitTeam() {
     return;
   }
   game.teamName = name;
-  game.cars = [];
-  carIndex = 0;
+  resetCars();
   showScreen("cars");
 }
 
@@ -501,26 +565,197 @@ teamInput.addEventListener("input", () => { teamMsg.textContent = ""; });
 
 /* =====================================================================
    SCREEN 2: DRAW CARS
-   Two stacked canvases: car-guide (white + faint arrow) underneath and
-   car-canvas (transparent, the real drawing) on top. Only car-canvas is
-   cropped and stored, so the arrow never ends up on the car.
+   Each car is drawn twice: from the SIDE (front points right, used by the
+   2D view) and from BEHIND (used by the 3D view).
+   Three stacked canvases:
+     car-guide   - white + faint hints (never part of the car)
+     car-canvas  - the actual drawing (this is cropped and stored)
+     car-overlay - preview of a stencil before it is stamped
    Cars 0 and 1 are computer cars, car 2 (the last) is the player's.
    ===================================================================== */
-let carIndex = 0;   // which car (0..2) is being drawn
+let carIndex = 0;        // which car (0..2) is being drawn
+let carView = "side";    // "side" or "back"
 
-const carCanvas = document.getElementById("car-canvas");
-const carCtx    = carCanvas.getContext("2d", { willReadFrequently: true });
-const guideCtx  = document.getElementById("car-guide").getContext("2d");
-const carsMsg   = document.getElementById("cars-msg");
+const carCanvas  = document.getElementById("car-canvas");
+const carCtx     = carCanvas.getContext("2d", { willReadFrequently: true });
+const guideCtx   = document.getElementById("car-guide").getContext("2d");
+const overlayCtx = document.getElementById("car-overlay").getContext("2d");
+const carsMsg    = document.getElementById("cars-msg");
 
 const brush = {
   color: CAR_PALETTE[0],
   size: BRUSH_SIZES[1],
   eraser: false,
+  stencil: null,     // the selected stencil, or null when drawing freehand
   pointerId: null,   // the pointer currently drawing (ignore extra fingers)
-  last: null,        // last point of the current stroke
+  last: null,        // last point of the current stroke / stencil position
   undo: [],          // stack of ImageData snapshots
 };
+
+/* ---------------------------------------------------------------------
+   STENCILS: ready-made parts stamped in the current color.
+   Each one draws itself in a box from -1 to 1; `size` is its width in px
+   at the medium brush size (small = 0.6x, large = 1.6x).
+   To add one: add { name, size, draw(ctx, color) } to the side or back list.
+   --------------------------------------------------------------------- */
+const SHINE = "rgba(255, 255, 255, 0.65)";
+const STENCIL_SCALES = [0.6, 1, 1.6];   // for the small / medium / large brush
+
+function disc(c, x, y, r) { c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); c.fill(); }
+function poly(c, pts) { c.beginPath(); pts.forEach(([x, y], i) => i ? c.lineTo(x, y) : c.moveTo(x, y)); c.closePath(); }
+function line(c, x1, y1, x2, y2, w, color) {
+  c.strokeStyle = color; c.lineWidth = w;
+  c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.stroke();
+}
+function starPath(c, r1, r2) {
+  c.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const r = i % 2 ? r2 : r1, a = -Math.PI / 2 + i * Math.PI / 5;
+    c.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+  }
+  c.closePath();
+}
+function flamePath(c) {   // flame pointing left (backwards on a side-view car)
+  c.beginPath();
+  c.moveTo(1, -0.45);
+  c.quadraticCurveTo(0, -0.9, -1, -0.55);
+  c.quadraticCurveTo(-0.3, -0.25, -0.75, 0);
+  c.quadraticCurveTo(-0.3, 0.25, -1, 0.55);
+  c.quadraticCurveTo(0, 0.9, 1, 0.45);
+  c.closePath();
+}
+const starStencil = { name: "Stjerne", size: 60, draw(c, col) { c.fillStyle = col; starPath(c, 1, 0.45); c.fill(); } };
+
+const STENCILS = {
+  side: [
+    { name: "Hjul", size: 70, draw(c, col) {
+        c.fillStyle = col; disc(c, 0, 0, 1);
+        c.fillStyle = "#fff"; disc(c, 0, 0, 0.55);
+        c.fillStyle = col; disc(c, 0, 0, 0.2);
+      } },
+    { name: "Spoiler", size: 140, draw(c, col) {
+        c.fillStyle = col;
+        c.fillRect(-0.12, -0.45, 0.24, 1.2);
+        poly(c, [[-1, -0.5], [1, -0.8], [1, -0.4], [-1, -0.25]]); c.fill();
+        line(c, -0.9, -0.45, 0.9, -0.68, 0.08, SHINE);
+      } },
+    { name: "Rude", size: 110, draw(c, col) {
+        c.fillStyle = col;
+        poly(c, [[-1, 0.55], [1, 0.55], [0.55, -0.55], [-0.45, -0.55]]); c.fill();
+        line(c, -0.35, 0.35, 0.05, -0.35, 0.14, SHINE);
+      } },
+    { name: "Lygte", size: 50, draw(c, col) {
+        c.fillStyle = col; c.beginPath(); c.ellipse(0, 0, 1, 0.7, 0, 0, Math.PI * 2); c.fill();
+        c.fillStyle = SHINE; c.beginPath(); c.ellipse(0.25, -0.2, 0.35, 0.25, 0, 0, Math.PI * 2); c.fill();
+      } },
+    { name: "Flamme", size: 130, draw(c, col) {
+        c.fillStyle = col; flamePath(c); c.fill();
+        c.save(); c.translate(0.45, 0); c.scale(0.5, 0.5); c.fillStyle = SHINE; flamePath(c); c.fill(); c.restore();
+      } },
+    { name: "Udstødning", size: 90, draw(c, col) {
+        c.fillStyle = "rgba(150, 150, 150, 0.6)"; disc(c, -0.7, -0.3, 0.25); disc(c, -0.95, -0.7, 0.2);
+        c.fillStyle = col; c.fillRect(-0.3, -0.22, 1.3, 0.44);
+        c.fillStyle = "#333"; c.fillRect(-0.4, -0.28, 0.15, 0.56);
+      } },
+    { name: "Nummer", size: 70, draw(c, col) {
+        c.fillStyle = "#fff"; disc(c, 0, 0, 1);
+        c.strokeStyle = col; c.lineWidth = 0.15; c.beginPath(); c.arc(0, 0, 0.92, 0, Math.PI * 2); c.stroke();
+        c.fillStyle = col; c.font = "bold 1.3px sans-serif"; c.textAlign = "center"; c.textBaseline = "middle";
+        c.fillText("7", 0, 0.08);
+      } },
+    starStencil,
+  ],
+  back: [
+    { name: "Dæk", size: 55, draw(c, col) {
+        c.fillStyle = col; roundRectPath(c, -0.55, -1, 1.1, 2, 0.3); c.fill();
+        for (const y of [-0.5, 0, 0.5]) line(c, -0.35, y, 0.35, y, 0.12, SHINE);
+      } },
+    { name: "Spoiler", size: 220, draw(c, col) {
+        c.fillStyle = col;
+        c.fillRect(-0.6, -0.42, 0.12, 0.75); c.fillRect(0.48, -0.42, 0.12, 0.75);
+        roundRectPath(c, -1, -0.75, 2, 0.35, 0.1); c.fill();
+        line(c, -0.9, -0.66, 0.9, -0.66, 0.06, SHINE);
+      } },
+    { name: "Bagrude", size: 160, draw(c, col) {
+        c.fillStyle = col;
+        poly(c, [[-1, 0.5], [1, 0.5], [0.75, -0.5], [-0.75, -0.5]]); c.fill();
+        line(c, -0.45, 0.3, -0.15, -0.3, 0.12, SHINE);
+      } },
+    { name: "Baglygte", size: 60, draw(c, col) {
+        c.fillStyle = col; roundRectPath(c, -1, -0.5, 2, 1, 0.35); c.fill();
+        c.fillStyle = SHINE; roundRectPath(c, -0.7, -0.3, 0.6, 0.25, 0.1); c.fill();
+      } },
+    { name: "Udstødning", size: 34, draw(c, col) {
+        c.fillStyle = col; disc(c, 0, 0, 1);
+        c.fillStyle = "#333"; disc(c, 0, 0, 0.55);
+      } },
+    { name: "Nummerplade", size: 110, draw(c, col) {
+        c.fillStyle = "#fff"; roundRectPath(c, -1, -0.45, 2, 0.9, 0.12); c.fill();
+        c.strokeStyle = col; c.lineWidth = 0.1; c.stroke();
+        c.fillStyle = col; c.font = "bold 0.5px sans-serif"; c.textAlign = "center"; c.textBaseline = "middle";
+        c.fillText("RACER", 0, 0.03);
+      } },
+    starStencil,
+  ],
+};
+
+// Draw a stencil centered on (x, y)
+function drawStencil(ctx, st, x, y, scale, color) {
+  ctx.save();
+  ctx.translate(x, y);
+  const s = st.size * scale / 2;
+  ctx.scale(s, s);
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  st.draw(ctx, color);
+  ctx.restore();
+}
+
+const stencilScale = () => STENCIL_SCALES[Math.max(0, BRUSH_SIZES.indexOf(brush.size))];
+
+// One button per stencil for the current view (side or back)
+function buildStencilButtons() {
+  const box = document.getElementById("stencils");
+  box.innerHTML = "";
+  // First button: back to the normal pen
+  const pen = document.createElement("button");
+  pen.className = "stencil pen";
+  pen.title = "Tegn";
+  pen.textContent = "✏️";
+  pen.addEventListener("click", () => { brush.stencil = null; brush.eraser = false; updateToolSelection(); });
+  box.appendChild(pen);
+  STENCILS[carView].forEach(st => {
+    const b = document.createElement("button");
+    b.className = "stencil";
+    b.title = st.name;
+    const c = document.createElement("canvas");
+    c.width = 72; c.height = 36;
+    b.appendChild(c);
+    b.stencil = st;
+    b.addEventListener("click", () => {
+      brush.stencil = st;
+      brush.eraser = false;
+      updateToolSelection();
+    });
+    box.appendChild(b);
+  });
+  renderStencilIcons();
+}
+
+// Icons are drawn in the current color
+function renderStencilIcons() {
+  document.querySelectorAll("button.stencil:not(.pen)").forEach(b => {
+    const c = b.querySelector("canvas"), ctx = c.getContext("2d");
+    ctx.clearRect(0, 0, c.width, c.height);
+    ctx.save();
+    ctx.translate(c.width / 2, c.height / 2);
+    ctx.scale(17, 17);
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    b.stencil.draw(ctx, brush.color);
+    ctx.restore();
+  });
+}
 
 // --- Build palette, brush sizes and tool buttons ---
 function buildCarTools() {
@@ -546,7 +781,11 @@ function buildCarTools() {
     sizes.appendChild(b);
   });
 
-  document.getElementById("tool-eraser").addEventListener("click", () => { brush.eraser = !brush.eraser; updateToolSelection(); });
+  document.getElementById("tool-eraser").addEventListener("click", () => {
+    brush.eraser = !brush.eraser;
+    brush.stencil = null;
+    updateToolSelection();
+  });
   document.getElementById("tool-undo").addEventListener("click", undoStroke);
   document.getElementById("tool-clear").addEventListener("click", clearDrawing);
   document.getElementById("cars-done").addEventListener("click", finishCar);
@@ -558,34 +797,39 @@ function updateToolSelection() {
   document.querySelectorAll(".size").forEach(b =>
     b.classList.toggle("selected", Number(b.dataset.size) === brush.size));
   document.getElementById("tool-eraser").classList.toggle("selected", brush.eraser);
-  // Show the selected color on the size dots
+  document.querySelectorAll("button.stencil").forEach(b =>
+    b.classList.toggle("selected", b.classList.contains("pen") ? !brush.stencil && !brush.eraser : b.stencil === brush.stencil));
+  // Show the selected color on the size dots and stencil icons
   document.querySelectorAll(".size span").forEach(s => s.style.background = brush.eraser ? "#bbb" : brush.color);
+  renderStencilIcons();
+  carCanvas.style.cursor = brush.stencil ? "copy" : "crosshair";
 }
 
-// --- Faint "front of the car points this way" arrow ---
+// --- Faint hints behind the drawing ---
 function drawCarGuide() {
-  const w = guideCtx.canvas.width, h = guideCtx.canvas.height;
-  guideCtx.fillStyle = "#fff";
-  guideCtx.fillRect(0, 0, w, h);
-  guideCtx.strokeStyle = guideCtx.fillStyle = "rgba(29, 43, 83, 0.13)";
-  guideCtx.lineWidth = 14;
-  guideCtx.lineCap = "round";
-  // shaft
-  guideCtx.beginPath();
-  guideCtx.moveTo(200, h / 2);
-  guideCtx.lineTo(560, h / 2);
-  guideCtx.stroke();
-  // head
-  guideCtx.beginPath();
-  guideCtx.moveTo(620, h / 2);
-  guideCtx.lineTo(540, h / 2 - 50);
-  guideCtx.lineTo(540, h / 2 + 50);
-  guideCtx.closePath();
-  guideCtx.fill();
-  // text
-  guideCtx.font = "bold 30px 'Comic Sans MS', sans-serif";
-  guideCtx.textAlign = "center";
-  guideCtx.fillText("Bilens forende peger denne vej →", w / 2, 60);
+  const g = guideCtx, w = g.canvas.width, h = g.canvas.height;
+  g.fillStyle = "#fff";
+  g.fillRect(0, 0, w, h);
+  g.strokeStyle = g.fillStyle = "rgba(29, 43, 83, 0.13)";
+  g.lineCap = "round";
+  g.font = "bold 30px 'Comic Sans MS', sans-serif";
+  g.textAlign = "center";
+  if (carView === "side") {
+    // "front of the car points this way" arrow
+    g.lineWidth = 14;
+    g.beginPath(); g.moveTo(w / 2 - 200, h / 2); g.lineTo(w / 2 + 160, h / 2); g.stroke();
+    g.beginPath(); g.moveTo(w / 2 + 220, h / 2); g.lineTo(w / 2 + 140, h / 2 - 50); g.lineTo(w / 2 + 140, h / 2 + 50); g.closePath(); g.fill();
+    g.fillText("Bilens forende peger denne vej →", w / 2, 60);
+  } else {
+    // seen from behind: a middle line (to help make both sides alike) and the road
+    g.lineWidth = 4;
+    g.setLineDash([14, 14]);
+    g.beginPath(); g.moveTo(w / 2, 90); g.lineTo(w / 2, h - 30); g.stroke();
+    g.setLineDash([]);
+    g.lineWidth = 8;
+    g.beginPath(); g.moveTo(60, h - 70); g.lineTo(w - 60, h - 70); g.stroke();
+    g.fillText("Tegn bilen set BAGFRA 🔙", w / 2, 60);
+  }
 }
 
 // --- Drawing with pointer events (mouse, finger, pen) ---
@@ -610,6 +854,15 @@ function drawSegment(a, b) {
   carCtx.globalCompositeOperation = "source-over";
 }
 
+// Stencil preview follows the finger / mouse; it is stamped on release
+function showStencilPreview(p) {
+  overlayCtx.clearRect(0, 0, overlayCtx.canvas.width, overlayCtx.canvas.height);
+  if (!p || !brush.stencil) return;
+  overlayCtx.globalAlpha = 0.55;
+  drawStencil(overlayCtx, brush.stencil, p.x, p.y, stencilScale(), brush.color);
+  overlayCtx.globalAlpha = 1;
+}
+
 carCanvas.addEventListener("pointerdown", e => {
   if (brush.pointerId !== null) return;          // already drawing with another finger
   e.preventDefault();
@@ -618,10 +871,20 @@ carCanvas.addEventListener("pointerdown", e => {
   pushUndo();
   carsMsg.textContent = "";
   brush.last = toLocal(e, carCanvas);
-  drawSegment(brush.last, brush.last);
+  if (brush.stencil) showStencilPreview(brush.last);
+  else drawSegment(brush.last, brush.last);
 });
 
 carCanvas.addEventListener("pointermove", e => {
+  if (brush.stencil) {
+    // while held: move the preview; mouse hovering: show where it would go
+    if (e.pointerId === brush.pointerId || (brush.pointerId === null && e.pointerType === "mouse")) {
+      const p = toLocal(e, carCanvas);
+      if (e.pointerId === brush.pointerId) brush.last = p;
+      showStencilPreview(p);
+    }
+    return;
+  }
   if (e.pointerId !== brush.pointerId) return;
   // Coalesced events give smoother lines on fast finger/pen movement
   const events = (e.getCoalescedEvents && e.getCoalescedEvents().length) ? e.getCoalescedEvents() : [e];
@@ -634,11 +897,16 @@ carCanvas.addEventListener("pointermove", e => {
 
 function endStroke(e) {
   if (e.pointerId !== brush.pointerId) return;
+  if (brush.stencil && e.type === "pointerup") {
+    drawStencil(carCtx, brush.stencil, brush.last.x, brush.last.y, stencilScale(), brush.color);
+  }
+  showStencilPreview(null);
   brush.pointerId = null;
   brush.last = null;
 }
 carCanvas.addEventListener("pointerup", endStroke);
 carCanvas.addEventListener("pointercancel", endStroke);
+carCanvas.addEventListener("pointerleave", () => { if (brush.pointerId === null) showStencilPreview(null); });
 
 // --- Undo / clear ---
 function pushUndo() {
@@ -684,40 +952,54 @@ function cropDrawing() {
   return out;
 }
 
+// Side first, then the same car from behind, then the next car
 function finishCar() {
   const result = cropDrawing();
+  carsMsg.classList.remove("good");
   if (result === "empty") { carsMsg.textContent = "Du har ikke tegnet noget endnu! 🎨"; return; }
   if (result === "tiny")  { carsMsg.textContent = "Bilen er lidt lille – tegn den større! 🔍"; return; }
-  game.cars[carIndex] = result;
+  if (carView === "side") {
+    game.cars[carIndex] = result;
+    carView = "back";
+    enterCars();
+    return;
+  }
+  game.carBacks[carIndex] = result;
+  carView = "side";
   carIndex++;
   if (carIndex < NUM_CARS) enterCars();
   else showScreen("garage");
 }
 
-// --- Draw an image centered and scaled to fit inside a canvas ---
-function drawFit(ctx, img, margin = 8) {
-  const w = ctx.canvas.width, h = ctx.canvas.height;
-  ctx.clearRect(0, 0, w, h);
+// --- Draw an image centered and scaled to fit inside a box ---
+function drawFitRect(ctx, img, x, y, w, h, margin = 8) {
   if (!img) return;
   const s = Math.min((w - margin * 2) / img.width, (h - margin * 2) / img.height);
   const dw = img.width * s, dh = img.height * s;
-  ctx.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
+  ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
+}
+
+function drawFit(ctx, img, margin = 8) {
+  ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  drawFitRect(ctx, img, 0, 0, ctx.canvas.width, ctx.canvas.height, margin);
 }
 
 function carLabel(i) {
   return i === NUM_CARS - 1 ? "DIN bil ⭐" : `${AI_CARS[i].name} 🤖`;
 }
 
-// --- Small previews of the cars at the bottom ---
+// --- Small previews of the cars at the bottom (side + back) ---
 function renderCarPreviews() {
   const box = document.getElementById("car-previews");
   box.innerHTML = "";
   for (let i = 0; i < NUM_CARS; i++) {
     const slot = document.createElement("div");
-    slot.className = "preview" + (i === carIndex ? " current" : game.cars[i] ? " done" : "");
+    slot.className = "preview" + (i === carIndex ? " current" : game.carBacks[i] ? " done" : "");
     const c = document.createElement("canvas");
     c.width = 150; c.height = 82;
-    drawFit(c.getContext("2d"), game.cars[i], 6);
+    const ctx = c.getContext("2d");
+    drawFitRect(ctx, game.cars[i], 0, 0, 96, 82, 5);
+    drawFitRect(ctx, game.carBacks[i], 96, 0, 54, 82, 5);
     const label = document.createElement("div");
     label.textContent = carLabel(i);
     slot.append(c, label);
@@ -727,22 +1009,35 @@ function renderCarPreviews() {
 
 function enterCars() {
   const isMine = carIndex === NUM_CARS - 1;
-  document.getElementById("cars-title").textContent = `Tegn bil ${carIndex + 1} af ${NUM_CARS}`;
+  document.getElementById("cars-title").textContent =
+    `Tegn bil ${carIndex + 1} af ${NUM_CARS} – ${carView === "side" ? "fra siden" : "bagfra"}`;
   const badge = document.getElementById("cars-badge");
   badge.textContent = isMine ? "Det her er DIN bil! ⭐" : "Computerbil 🤖";
   badge.classList.toggle("mine", isMine);
 
   carCtx.clearRect(0, 0, carCanvas.width, carCanvas.height);
+  showStencilPreview(null);
   brush.undo = [];
   brush.pointerId = null;
   brush.eraser = false;
+  brush.stencil = null;
   carsMsg.textContent = "";
+  carsMsg.classList.remove("good");
+  drawCarGuide();
+  buildStencilButtons();
   updateToolSelection();
   renderCarPreviews();
+  closePicker();
+  // A premade car was picked for this car: its back view is ready too
+  if (carView === "back" && premadePicks[carIndex] !== undefined) {
+    loadPremade(premadePicks[carIndex]);
+    carsMsg.classList.add("good");
+    carsMsg.textContent = "Bagfra er klar – tryk Færdig, eller tegn videre";
+  }
 }
 
 /* =====================================================================
-   SCREEN 2b: GARAGE  (shows the three finished cars)
+   SCREEN 2b: GARAGE  (shows the three finished cars, side + back)
    ===================================================================== */
 function enterGarage() {
   const box = document.getElementById("garage");
@@ -750,25 +1045,540 @@ function enterGarage() {
   for (let i = 0; i < NUM_CARS; i++) {
     const slot = document.createElement("div");
     slot.className = "garage-slot" + (i === NUM_CARS - 1 ? " mine" : "");
-    const c = document.createElement("canvas");
-    c.width = 340; c.height = 210;
-    drawFit(c.getContext("2d"), game.cars[i], 16);
+    const side = document.createElement("canvas");
+    side.width = 340; side.height = 170;
+    drawFit(side.getContext("2d"), game.cars[i], 14);
+    const back = document.createElement("canvas");
+    back.className = "back";
+    back.width = 340; back.height = 110;
+    drawFit(back.getContext("2d"), game.carBacks[i], 10);
     const label = document.createElement("div");
     label.textContent = carLabel(i);
-    slot.append(c, label);
+    slot.append(side, back, label);
     box.appendChild(slot);
   }
 }
 
-document.getElementById("garage-redo").addEventListener("click", () => {
+function resetCars() {
   game.cars = [];
+  game.carBacks = [];
+  premadePicks.length = 0;
   carIndex = 0;
+  carView = "side";
+}
+
+document.getElementById("garage-redo").addEventListener("click", () => {
+  resetCars();
   showScreen("cars");
 });
 document.getElementById("garage-next").addEventListener("click", () => showScreen("setup"));
 
 buildCarTools();
-drawCarGuide();
+
+/* =====================================================================
+   PREMADE CARS  (detailed cars he can pick instead of drawing)
+   Every car is drawn with canvas code in the same 720x440 space as the
+   drawing canvas: side view with the front pointing right (ground at
+   y = 380), back view centered (ground at y = 395).
+   Picking one puts it on the drawing canvas, so he can still add
+   stencils or draw on it before pressing "Færdig".
+   To add a car: add { name, side(ctx), back(ctx) } to PREMADE_CARS.
+   ===================================================================== */
+const OUTLINE = "#1d2b53";
+
+// Lighter (amt > 0) or darker (amt < 0) version of a #rrggbb colour
+function shade(hex, amt) {
+  const n = parseInt(hex.slice(1), 16);
+  const c = v => Math.max(0, Math.min(255, v + amt));
+  return `rgb(${c(n >> 16)}, ${c((n >> 8) & 255)}, ${c(n & 255)})`;
+}
+// Shiny paint: light at the top, darker at the bottom
+function paint(c, color, y1, y2) {
+  const g = c.createLinearGradient(0, y1, 0, y2);
+  g.addColorStop(0, shade(color, 70));
+  g.addColorStop(0.45, color);
+  g.addColorStop(1, shade(color, -60));
+  return g;
+}
+function glassFill(c, y1, y2) {
+  const g = c.createLinearGradient(0, y1, 0, y2);
+  g.addColorStop(0, "#d9f3ff");
+  g.addColorStop(1, "#4f9fd0");
+  return g;
+}
+// Fill the current path and give it the cartoon outline
+function fillOut(c, fill, lw = 4) {
+  c.fillStyle = fill; c.fill();
+  c.strokeStyle = OUTLINE; c.lineWidth = lw; c.lineJoin = "round"; c.stroke();
+}
+function rr(c, x, y, w, h, r) { roundRectPath(c, x, y, w, h, r); }
+function seg(c, x1, y1, x2, y2, w, color) {
+  c.strokeStyle = color; c.lineWidth = w; c.lineCap = "round";
+  c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.stroke();
+}
+// A lamp: white-hot centre fading to its colour
+function lamp(c, x, y, rx, ry, color) {
+  const g = c.createRadialGradient(x, y, 1, x, y, Math.max(rx, ry));
+  g.addColorStop(0, "#ffffff");
+  g.addColorStop(0.5, color);
+  g.addColorStop(1, shade(color.length === 7 ? color : "#ff0000", -40));
+  c.beginPath(); c.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2);
+  fillOut(c, g, 3);
+}
+function label(c, text, x, y, size, color) {
+  c.font = `bold ${size}px 'Comic Sans MS', sans-serif`;
+  c.textAlign = "center"; c.textBaseline = "middle";
+  c.fillStyle = color; c.fillText(text, x, y);
+}
+// Side-view wheel with tyre tread, shiny rim and spokes
+function wheel(c, x, y, r, rim = "#c9ced6") {
+  c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2);
+  fillOut(c, "#1f1f24");
+  c.strokeStyle = "#45454f"; c.lineWidth = 3;
+  for (let i = 0; i < 18; i++) {
+    const a = i / 18 * Math.PI * 2;
+    c.beginPath();
+    c.moveTo(x + Math.cos(a) * r * 0.84, y + Math.sin(a) * r * 0.84);
+    c.lineTo(x + Math.cos(a) * r * 0.97, y + Math.sin(a) * r * 0.97);
+    c.stroke();
+  }
+  const g = c.createRadialGradient(x - r * 0.2, y - r * 0.2, 2, x, y, r * 0.62);
+  g.addColorStop(0, "#ffffff");
+  g.addColorStop(0.5, rim);
+  g.addColorStop(1, shade(rim, -70));
+  c.beginPath(); c.arc(x, y, r * 0.6, 0, Math.PI * 2);
+  fillOut(c, g, 3);
+  for (let i = 0; i < 5; i++) {
+    const a = i / 5 * Math.PI * 2 - Math.PI / 2;
+    seg(c, x + Math.cos(a) * r * 0.16, y + Math.sin(a) * r * 0.16,
+           x + Math.cos(a) * r * 0.52, y + Math.sin(a) * r * 0.52, r * 0.09, shade(rim, -90));
+  }
+  c.fillStyle = "#4a4a52"; disc(c, x, y, r * 0.15);
+  c.fillStyle = "rgba(255,255,255,0.7)"; disc(c, x - r * 0.04, y - r * 0.05, r * 0.05);
+}
+// Dark half-circle behind a wheel (the wheel arch)
+function arch(c, x, y, r) {
+  c.beginPath(); c.arc(x, y, r, Math.PI, 0); c.closePath();
+  c.fillStyle = "#24242b"; c.fill();
+}
+function spring(c, x, y1, y2) {
+  c.strokeStyle = "#9aa0a8"; c.lineWidth = 6; c.lineJoin = "round";
+  c.beginPath(); c.moveTo(x, y1);
+  for (let i = 1; i <= 8; i++) c.lineTo(x + (i % 2 ? 14 : -14), y1 + (y2 - y1) * i / 9);
+  c.lineTo(x, y2); c.stroke();
+}
+
+/* ---- Back views share one builder: tyres, body, cabin, lights, bumper, plate ---- */
+function backView(c, o) {
+  const cx = 360, ground = 395;
+  const bb = ground - o.clear, bt = bb - o.h, hw = o.w / 2;
+  const ct = bt - (o.cabinH || 0);
+  if (o.under) o.under(c, { cx, ground, bt, bb, ct, hw });
+  // tyres
+  for (const s of [-1, 1]) {
+    const tx = cx + s * o.tireX;
+    rr(c, tx - o.tireW / 2, ground - o.tireH, o.tireW, o.tireH, Math.min(16, o.tireW / 3));
+    fillOut(c, "#1f1f24");
+    for (let y = ground - o.tireH + 14; y < ground - 6; y += 16) seg(c, tx - o.tireW * 0.32, y, tx + o.tireW * 0.32, y, 3, "#45454f");
+  }
+  // body
+  c.beginPath();
+  c.moveTo(cx - hw, bb); c.lineTo(cx + hw, bb);
+  c.lineTo(cx + hw * o.taper, bt); c.lineTo(cx - hw * o.taper, bt);
+  c.closePath();
+  fillOut(c, paint(c, o.color, bt, bb));
+  // cabin with rear window
+  if (o.cabinH) {
+    const bw = hw * o.taper * 0.9, tw = o.roofW / 2;
+    c.beginPath();
+    c.moveTo(cx - bw, bt); c.lineTo(cx + bw, bt); c.lineTo(cx + tw, ct); c.lineTo(cx - tw, ct);
+    c.closePath();
+    fillOut(c, paint(c, o.roofColor || o.color, ct, bt));
+    const i = 12;
+    c.beginPath();
+    c.moveTo(cx - bw + i * 1.6, bt - 6); c.lineTo(cx + bw - i * 1.6, bt - 6);
+    c.lineTo(cx + tw - i, ct + i); c.lineTo(cx - tw + i, ct + i);
+    c.closePath();
+    fillOut(c, glassFill(c, ct, bt), 3);
+    seg(c, cx - bw * 0.45, bt - 14, cx - bw * 0.15, ct + 18, 6, "rgba(255,255,255,0.6)");
+  }
+  // shine along the top of the body
+  seg(c, cx - hw * o.taper + 18, bt + 8, cx + hw * o.taper - 18, bt + 8, 4, "rgba(255,255,255,0.45)");
+  // tail lights
+  if (o.lights !== false) {
+    for (const s of [-1, 1]) {
+      const lx = cx + s * hw * 0.74;
+      rr(c, lx - 28, bt + o.h * 0.18, 56, 22, 8);
+      const g = c.createLinearGradient(0, bt + o.h * 0.18, 0, bt + o.h * 0.18 + 22);
+      g.addColorStop(0, "#ff9a8f"); g.addColorStop(1, "#c4160b");
+      fillOut(c, g, 3);
+    }
+  }
+  // bumper
+  rr(c, cx - hw - 6, bb - 18, o.w + 12, 20, 7);
+  fillOut(c, "#34353c", 3);
+  // number plate
+  if (o.plate) {
+    rr(c, cx - 52, bb - 58, 104, 30, 5);
+    fillOut(c, "#ffffff", 3);
+    label(c, o.plate, cx, bb - 42, 18, OUTLINE);
+  }
+  // exhaust pipes
+  for (const off of o.exhausts || []) {
+    c.beginPath(); c.arc(cx + off, bb + 4, 10, 0, Math.PI * 2); fillOut(c, "#8a8f98", 3);
+    c.fillStyle = "#16161a"; disc(c, cx + off, bb + 4, 5);
+  }
+  if (o.extras) o.extras(c, { cx, ground, bt, bb, ct, hw });
+}
+
+const PREMADE_CARS = [
+  {
+    name: "Formel 1",
+    side(c) {
+      const red = "#e8433c";
+      // rear wing
+      rr(c, 128, 214, 16, 64, 3); fillOut(c, "#33343a");
+      rr(c, 78, 194, 118, 24, 7); fillOut(c, paint(c, red, 194, 218));
+      rr(c, 70, 182, 16, 66, 4); fillOut(c, "#26262c");
+      // body
+      c.beginPath();
+      c.moveTo(118, 334); c.lineTo(122, 272); c.lineTo(240, 262);
+      c.quadraticCurveTo(290, 205, 352, 214); c.lineTo(392, 248); c.lineTo(470, 256);
+      c.quadraticCurveTo(560, 268, 652, 312); c.lineTo(652, 334); c.closePath();
+      fillOut(c, paint(c, red, 205, 334));
+      seg(c, 135, 300, 645, 322, 6, "#ffffff");
+      rr(c, 262, 280, 196, 36, 16); fillOut(c, shade(red, -45), 3);
+      seg(c, 280, 290, 440, 290, 3, "rgba(255,255,255,0.35)");
+      c.fillStyle = "#1c1c20"; c.beginPath(); c.ellipse(334, 223, 12, 9, 0, 0, Math.PI * 2); c.fill();
+      // driver helmet
+      c.beginPath(); c.arc(420, 236, 25, Math.PI, 0); c.lineTo(445, 250); c.lineTo(395, 250); c.closePath();
+      fillOut(c, paint(c, "#ffd23f", 211, 250));
+      rr(c, 420, 226, 26, 11, 5); fillOut(c, "#22252e", 3);
+      // number
+      c.beginPath(); c.arc(530, 294, 18, 0, Math.PI * 2); fillOut(c, "#ffffff", 3);
+      label(c, "1", 530, 296, 24, OUTLINE);
+      // front wing
+      rr(c, 596, 334, 76, 11, 4); fillOut(c, paint(c, red, 334, 345), 3);
+      rr(c, 662, 316, 11, 32, 3); fillOut(c, "#26262c", 3);
+      wheel(c, 190, 330, 50, "#d8dce3");
+      wheel(c, 565, 338, 42, "#d8dce3");
+    },
+    back(c) {
+      backView(c, {
+        color: "#e8433c", w: 160, h: 70, clear: 70, taper: 0.8, lights: false,
+        tireW: 96, tireH: 120, tireX: 150, exhausts: [0],
+        extras(c, p) {
+          // driver's helmet above the body
+          c.beginPath(); c.arc(p.cx, p.bt - 4, 30, Math.PI, 0); c.closePath();
+          fillOut(c, paint(c, "#ffd23f", p.bt - 34, p.bt));
+          // big rear wing on a pillar
+          rr(c, p.cx - 9, p.bt - 92, 18, 92, 4); fillOut(c, "#33343a", 3);
+          rr(c, p.cx - 175, p.bt - 128, 350, 40, 8); fillOut(c, paint(c, "#e8433c", p.bt - 128, p.bt - 88));
+          label(c, "LYN", p.cx, p.bt - 107, 26, "#ffffff");
+          for (const s of [-1, 1]) { rr(c, p.cx + s * 178 - 10, p.bt - 142, 20, 82, 5); fillOut(c, "#26262c", 3); }
+          // rain light
+          rr(c, p.cx - 14, p.bb - 46, 28, 16, 4); fillOut(c, "#ff3b30", 3);
+          for (const x of [-50, -25, 25, 50]) seg(c, p.cx + x, p.bb - 18, p.cx + x * 1.2, p.bb, 4, "#26262c");
+        },
+      });
+    },
+  },
+  {
+    name: "Sportsvogn",
+    side(c) {
+      const col = "#ffc61a";
+      arch(c, 165, 338, 54); arch(c, 555, 338, 54);
+      c.beginPath();
+      c.moveTo(80, 336); c.lineTo(78, 290); c.quadraticCurveTo(82, 262, 140, 258); c.lineTo(250, 254);
+      c.quadraticCurveTo(320, 196, 420, 196); c.quadraticCurveTo(495, 198, 552, 252); c.lineTo(625, 268);
+      c.quadraticCurveTo(664, 278, 660, 318); c.lineTo(650, 338); c.closePath();
+      fillOut(c, paint(c, col, 196, 338));
+      for (const x of [165, 555]) { c.beginPath(); c.arc(x, 338, 52, Math.PI, 0); c.fillStyle = "#24242b"; c.fill(); }
+      // windows
+      c.beginPath(); c.moveTo(272, 250); c.quadraticCurveTo(330, 208, 415, 207); c.quadraticCurveTo(482, 209, 526, 250); c.closePath();
+      fillOut(c, glassFill(c, 207, 250), 3);
+      seg(c, 402, 208, 396, 250, 8, col);
+      seg(c, 300, 244, 340, 216, 5, "rgba(255,255,255,0.6)");
+      // racing stripes, door, mirror
+      seg(c, 90, 292, 645, 300, 7, "#1d1d22");
+      seg(c, 92, 306, 645, 313, 4, "#1d1d22");
+      c.strokeStyle = shade(col, -70); c.lineWidth = 3;
+      c.beginPath(); c.moveTo(300, 258); c.lineTo(296, 330); c.moveTo(470, 256); c.lineTo(478, 330); c.stroke();
+      rr(c, 500, 236, 20, 12, 4); fillOut(c, col, 3);
+      // ducktail spoiler
+      rr(c, 72, 240, 84, 13, 5); fillOut(c, shade(col, -25), 3);
+      rr(c, 100, 252, 10, 12, 2); fillOut(c, "#33343a", 2);
+      lamp(c, 640, 286, 15, 8, "#fff3a8");
+      lamp(c, 86, 280, 8, 11, "#ff3b30");
+      rr(c, 60, 330, 30, 9, 4); fillOut(c, "#8a8f98", 3);
+      wheel(c, 165, 338, 42);
+      wheel(c, 555, 338, 42);
+    },
+    back(c) {
+      backView(c, {
+        color: "#ffc61a", w: 410, h: 92, clear: 34, taper: 0.95, cabinH: 72, roofW: 230,
+        tireW: 66, tireH: 72, tireX: 152, plate: "SOL 1", exhausts: [-80, -55, 55, 80],
+        extras(c, p) {
+          for (const x of [-26, 12]) { c.fillStyle = "#1d1d22"; c.fillRect(p.cx + x, p.bt + 2, 14, p.bb - p.bt - 22); }
+          rr(c, p.cx - 200, p.bt - 12, 400, 16, 6); fillOut(c, shade("#ffc61a", -25), 3);
+        },
+      });
+    },
+  },
+  {
+    name: "Monstertruck",
+    side(c) {
+      const col = "#2fbf71";
+      spring(c, 190, 250, 300); spring(c, 530, 250, 300);
+      rr(c, 150, 252, 430, 16, 6); fillOut(c, "#3a3b42", 3);
+      // truck bed
+      rr(c, 105, 180, 232, 76, 12); fillOut(c, paint(c, col, 180, 256));
+      seg(c, 120, 196, 322, 196, 5, shade(col, -60));
+      // cab + bonnet
+      c.beginPath();
+      c.moveTo(330, 256); c.lineTo(330, 175); c.quadraticCurveTo(335, 120, 382, 118); c.lineTo(455, 118);
+      c.quadraticCurveTo(482, 120, 502, 170); c.lineTo(620, 180); c.quadraticCurveTo(646, 186, 646, 216);
+      c.lineTo(646, 256); c.closePath();
+      fillOut(c, paint(c, col, 118, 256));
+      c.beginPath(); c.moveTo(350, 170); c.lineTo(354, 138); c.quadraticCurveTo(360, 128, 382, 128);
+      c.lineTo(450, 128); c.quadraticCurveTo(466, 130, 482, 168); c.closePath();
+      fillOut(c, glassFill(c, 128, 170), 3);
+      seg(c, 372, 160, 392, 136, 5, "rgba(255,255,255,0.6)");
+      // flames on the bonnet
+      c.save(); c.translate(575, 222); c.scale(-60, 26); c.fillStyle = "#ff8c42"; flamePath(c); c.fill();
+      c.scale(0.6, 0.6); c.fillStyle = "#ffd23f"; flamePath(c); c.fill(); c.restore();
+      // roof lights and headlight
+      for (const x of [370, 395, 420, 445]) lamp(c, x, 110, 9, 9, "#ffd23f");
+      lamp(c, 640, 198, 9, 14, "#fff3a8");
+      seg(c, 520, 240, 640, 240, 4, shade(col, -60));
+      wheel(c, 190, 305, 75, "#b5bcc6");
+      wheel(c, 530, 305, 75, "#b5bcc6");
+    },
+    back(c) {
+      backView(c, {
+        color: "#2fbf71", w: 360, h: 90, clear: 150, taper: 0.96, cabinH: 82, roofW: 240,
+        tireW: 116, tireH: 180, tireX: 170, plate: "BIG 4",
+        under(c, p) {
+          for (const s of [-1, 1]) spring(c, p.cx + s * 110, p.bb, p.ground - 70);
+          rr(c, p.cx - 150, p.bb - 6, 300, 16, 6); fillOut(c, "#3a3b42", 3);
+        },
+        extras(c, p) {
+          for (const x of [-75, -25, 25, 75]) lamp(c, p.cx + x, p.ct - 8, 10, 10, "#ffd23f");
+        },
+      });
+    },
+  },
+  {
+    name: "Politibil",
+    side(c) {
+      const white = "#f4f6fb", blue = "#1f4fbf";
+      arch(c, 165, 338, 54); arch(c, 555, 338, 54);
+      const body = () => {
+        c.beginPath();
+        c.moveTo(84, 338); c.lineTo(84, 285); c.quadraticCurveTo(90, 262, 145, 258); c.lineTo(235, 256);
+        c.quadraticCurveTo(285, 200, 360, 198); c.lineTo(470, 198); c.quadraticCurveTo(512, 200, 546, 255);
+        c.lineTo(630, 265); c.quadraticCurveTo(662, 272, 658, 315); c.lineTo(648, 338); c.closePath();
+      };
+      body(); fillOut(c, paint(c, "#dfe4ee", 198, 338));
+      // chequered blue/yellow band
+      c.save(); body(); c.clip();
+      for (let x = 70; x < 670; x += 24) for (let row = 0; row < 2; row++) {
+        c.fillStyle = ((x / 24 | 0) + row) % 2 ? "#ffd23f" : blue;
+        c.fillRect(x, 292 + row * 14, 24, 14);
+      }
+      c.restore();
+      body(); c.strokeStyle = OUTLINE; c.lineWidth = 4; c.stroke();
+      for (const x of [165, 555]) { c.beginPath(); c.arc(x, 338, 52, Math.PI, 0); c.fillStyle = "#24242b"; c.fill(); }
+      // windows
+      c.beginPath(); c.moveTo(256, 252); c.quadraticCurveTo(300, 210, 360, 208); c.lineTo(400, 208); c.lineTo(400, 252); c.closePath();
+      fillOut(c, glassFill(c, 208, 252), 3);
+      c.beginPath(); c.moveTo(414, 208); c.lineTo(468, 208); c.quadraticCurveTo(500, 212, 528, 252); c.lineTo(414, 252); c.closePath();
+      fillOut(c, glassFill(c, 208, 252), 3);
+      label(c, "POLITI", 400, 278, 26, blue);
+      // light bar
+      rr(c, 372, 180, 76, 20, 6); fillOut(c, "#30323a", 3);
+      lamp(c, 392, 189, 15, 8, "#ff3b30"); lamp(c, 428, 189, 15, 8, "#3a86ff");
+      lamp(c, 640, 286, 15, 8, "#fff3a8");
+      lamp(c, 90, 280, 8, 11, "#ff3b30");
+      wheel(c, 165, 338, 42);
+      wheel(c, 555, 338, 42);
+    },
+    back(c) {
+      backView(c, {
+        color: "#e9edf5", w: 390, h: 92, clear: 34, taper: 0.95, cabinH: 72, roofW: 240,
+        tireW: 64, tireH: 72, tireX: 150, plate: "POLITI", exhausts: [-70],
+        extras(c, p) {
+          for (let x = -180; x < 180; x += 24) for (let row = 0; row < 2; row++) {
+            c.fillStyle = ((x / 24 | 0) + row) % 2 ? "#ffd23f" : "#1f4fbf";
+            c.fillRect(p.cx + x, p.bt + 40 + row * 12, 24, 12);
+          }
+          rr(c, p.cx - 80, p.ct - 22, 160, 22, 7); fillOut(c, "#30323a", 3);
+          lamp(c, p.cx - 40, p.ct - 11, 30, 8, "#ff3b30"); lamp(c, p.cx + 40, p.ct - 11, 30, 8, "#3a86ff");
+        },
+      });
+    },
+  },
+  {
+    name: "Rallybil",
+    side(c) {
+      const col = "#3a86ff";
+      arch(c, 170, 335, 56); arch(c, 545, 335, 56);
+      c.beginPath();
+      c.moveTo(95, 332); c.lineTo(92, 228); c.quadraticCurveTo(96, 204, 132, 202); c.lineTo(410, 200);
+      c.lineTo(500, 250); c.lineTo(625, 262); c.quadraticCurveTo(656, 268, 652, 310); c.lineTo(642, 334); c.closePath();
+      fillOut(c, paint(c, col, 200, 334));
+      for (const x of [170, 545]) { c.beginPath(); c.arc(x, 335, 54, Math.PI, 0); c.fillStyle = "#24242b"; c.fill(); }
+      // windows
+      c.beginPath(); c.moveTo(118, 248); c.lineTo(120, 214); c.lineTo(290, 212); c.lineTo(290, 248); c.closePath();
+      fillOut(c, glassFill(c, 212, 248), 3);
+      c.beginPath(); c.moveTo(306, 248); c.lineTo(306, 212); c.lineTo(405, 212); c.lineTo(468, 248); c.closePath();
+      fillOut(c, glassFill(c, 212, 248), 3);
+      seg(c, 330, 244, 360, 216, 5, "rgba(255,255,255,0.6)");
+      // white sponsor swoosh and door number
+      c.beginPath(); c.moveTo(100, 300); c.quadraticCurveTo(350, 250, 640, 290); c.lineTo(640, 304); c.quadraticCurveTo(350, 266, 100, 316); c.closePath();
+      c.fillStyle = "#ffffff"; c.fill();
+      c.beginPath(); c.arc(390, 292, 26, 0, Math.PI * 2); fillOut(c, "#ffffff", 3);
+      label(c, "42", 390, 294, 26, OUTLINE);
+      // roof spoiler and scoop
+      rr(c, 80, 190, 74, 13, 4); fillOut(c, shade(col, -40), 3);
+      rr(c, 300, 192, 40, 10, 4); fillOut(c, "#30323a", 3);
+      // spotlights and lamps
+      lamp(c, 636, 292, 10, 10, "#fff3a8"); lamp(c, 640, 268, 12, 7, "#fff3a8");
+      lamp(c, 98, 250, 7, 12, "#ff3b30");
+      // mud flaps
+      rr(c, 102, 336, 12, 40, 3); fillOut(c, "#e8433c", 3);
+      rr(c, 476, 336, 12, 40, 3); fillOut(c, "#e8433c", 3);
+      wheel(c, 170, 335, 45, "#ffffff");
+      wheel(c, 545, 335, 45, "#ffffff");
+    },
+    back(c) {
+      backView(c, {
+        color: "#3a86ff", w: 380, h: 100, clear: 46, taper: 0.93, cabinH: 92, roofW: 270,
+        tireW: 68, tireH: 84, tireX: 150, plate: "RALLY", exhausts: [90],
+        extras(c, p) {
+          c.fillStyle = "#ffffff"; c.fillRect(p.cx - p.hw * 0.9, p.bt + 50, p.hw * 1.8, 10);
+          for (const s of [-1, 1]) { rr(c, p.cx + s * 115 - 6, p.ct - 18, 12, 22, 3); fillOut(c, "#30323a", 3); }
+          rr(c, p.cx - 155, p.ct - 30, 310, 18, 6); fillOut(c, paint(c, "#3a86ff", p.ct - 30, p.ct - 12), 3);
+          for (const s of [-1, 1]) { rr(c, p.cx + s * 150 - 38, p.ground - 46, 76, 44, 6); fillOut(c, "#e8433c", 3);
+            label(c, "42", p.cx + s * 150, p.ground - 24, 18, "#ffffff"); }
+        },
+      });
+    },
+  },
+  {
+    name: "Raketbil",
+    side(c) {
+      const silver = "#c9ced6";
+      // exhaust flame
+      c.save(); c.translate(84, 290); c.scale(64, 34);
+      const g = c.createLinearGradient(-1, 0, 1, 0);
+      g.addColorStop(0, "#ff3b30"); g.addColorStop(0.5, "#ff8c42"); g.addColorStop(1, "#ffe066");
+      c.fillStyle = g; flamePath(c); c.fill();
+      c.scale(0.55, 0.55); c.fillStyle = "#fff6c4"; flamePath(c); c.fill(); c.restore();
+      // tail fin
+      c.beginPath(); c.moveTo(136, 266); c.lineTo(118, 182); c.lineTo(172, 186); c.lineTo(236, 262); c.closePath();
+      fillOut(c, paint(c, "#e8433c", 182, 266));
+      // body
+      c.beginPath();
+      c.moveTo(130, 330); c.lineTo(130, 262); c.quadraticCurveTo(140, 244, 200, 240); c.lineTo(500, 238);
+      c.quadraticCurveTo(625, 242, 676, 292); c.quadraticCurveTo(625, 326, 500, 330); c.closePath();
+      fillOut(c, paint(c, silver, 238, 330));
+      seg(c, 140, 292, 668, 292, 9, "#e8433c");
+      for (let x = 160; x < 600; x += 40) { c.fillStyle = "#8a8f98"; disc(c, x, 316, 3); disc(c, x, 256, 3); }
+      rr(c, 116, 268, 20, 52, 5); fillOut(c, "#3a3b42", 3);
+      // cockpit bubble with pilot
+      c.beginPath(); c.arc(440, 238, 26, Math.PI, 0); c.closePath(); fillOut(c, paint(c, "#ffd23f", 212, 238), 3);
+      c.beginPath(); c.ellipse(430, 240, 62, 40, 0, Math.PI, 0); c.closePath();
+      c.fillStyle = "rgba(170, 225, 255, 0.55)"; c.fill(); c.strokeStyle = OUTLINE; c.lineWidth = 4; c.stroke();
+      seg(c, 395, 222, 420, 208, 5, "rgba(255,255,255,0.7)");
+      // small side fin
+      c.beginPath(); c.moveTo(240, 318); c.lineTo(205, 352); c.lineTo(290, 352); c.lineTo(310, 318); c.closePath();
+      fillOut(c, paint(c, "#e8433c", 318, 352), 3);
+      wheel(c, 210, 345, 35);
+      wheel(c, 560, 345, 35);
+    },
+    back(c) {
+      const cx = 360, cy = 255;
+      for (const s of [-1, 1]) {
+        rr(c, cx + s * 150 - 26, 335, 52, 60, 12); fillOut(c, "#1f1f24");
+        c.beginPath(); c.moveTo(cx + s * 70, cy + 40); c.lineTo(cx + s * 195, cy + 95); c.lineTo(cx + s * 190, cy + 120); c.lineTo(cx + s * 60, cy + 80); c.closePath();
+        fillOut(c, paint(c, "#e8433c", cy + 40, cy + 120));
+      }
+      c.beginPath(); c.moveTo(cx - 14, cy - 80); c.lineTo(cx - 8, cy - 190); c.lineTo(cx + 8, cy - 190); c.lineTo(cx + 14, cy - 80); c.closePath();
+      fillOut(c, paint(c, "#e8433c", cy - 190, cy - 80));
+      // fuselage
+      const g = c.createRadialGradient(cx - 40, cy - 40, 10, cx, cy, 120);
+      g.addColorStop(0, "#ffffff"); g.addColorStop(0.5, "#c9ced6"); g.addColorStop(1, "#7d838c");
+      c.beginPath(); c.arc(cx, cy, 115, 0, Math.PI * 2); fillOut(c, g);
+      c.beginPath(); c.arc(cx, cy, 100, 0, Math.PI * 2); c.strokeStyle = "#e8433c"; c.lineWidth = 10; c.stroke();
+      // nozzle with flame
+      c.beginPath(); c.arc(cx, cy, 70, 0, Math.PI * 2); fillOut(c, "#3a3b42");
+      const f = c.createRadialGradient(cx, cy, 4, cx, cy, 60);
+      f.addColorStop(0, "#ffffff"); f.addColorStop(0.35, "#ffe066"); f.addColorStop(0.75, "#ff8c42"); f.addColorStop(1, "#e8433c");
+      c.beginPath(); c.arc(cx, cy, 58, 0, Math.PI * 2); c.fillStyle = f; c.fill();
+      for (let a = 0; a < Math.PI * 2; a += Math.PI / 6) { c.fillStyle = "#8a8f98"; disc(c, cx + Math.cos(a) * 88, cy + Math.sin(a) * 88, 4); }
+    },
+  },
+];
+
+// Render a premade car (side or back) onto a fresh 720x440 canvas, cached
+const premadeCache = {};
+function renderPremade(index, view) {
+  const key = index + view;
+  if (!premadeCache[key]) {
+    const c = document.createElement("canvas");
+    c.width = 720; c.height = 440;
+    const ctx = c.getContext("2d");
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    PREMADE_CARS[index][view](ctx);
+    premadeCache[key] = c;
+  }
+  return premadeCache[key];
+}
+
+/* ---- The picker window on the drawing screen ---- */
+const picker = document.getElementById("car-picker");
+const premadePicks = [];   // premadePicks[car] = index of the premade car chosen for it
+
+function openPicker() {
+  document.getElementById("picker-title").textContent =
+    carView === "side" ? "Vælg en færdig bil" : "Vælg en færdig bil – bagfra";
+  const grid = document.getElementById("picker-grid");
+  grid.innerHTML = "";
+  PREMADE_CARS.forEach((car, i) => {
+    const b = document.createElement("button");
+    b.className = "pick";
+    const c = document.createElement("canvas");
+    c.width = 260; c.height = 130;
+    drawFit(c.getContext("2d"), renderPremade(i, carView), 6);
+    const name = document.createElement("div");
+    name.textContent = car.name;
+    b.append(c, name);
+    b.addEventListener("click", () => { pickPremade(i); closePicker(); });
+    grid.appendChild(b);
+  });
+  picker.classList.add("show");
+}
+
+function closePicker() { picker.classList.remove("show"); }
+
+// Put the chosen car on the drawing canvas (it can still be drawn on)
+function loadPremade(i) {
+  pushUndo();
+  carCtx.clearRect(0, 0, carCanvas.width, carCanvas.height);
+  carCtx.drawImage(renderPremade(i, carView), 0, 0);
+}
+
+function pickPremade(i) {
+  loadPremade(i);
+  if (carView === "side") premadePicks[carIndex] = i;
+  carsMsg.classList.add("good");
+  carsMsg.textContent = "Flot valg! Tegn videre på den – eller tryk Færdig";
+}
+
+document.getElementById("cars-pick").addEventListener("click", openPicker);
+document.getElementById("picker-close").addEventListener("click", closePicker);
 
 /* =====================================================================
    GEOMETRY HELPERS
@@ -1234,7 +2044,23 @@ function buildPlayerButtons() {
   }
 }
 
+// 2D (from above) or 3D (behind the car)
+function buildViewButtons() {
+  const row = document.getElementById("view-row");
+  for (const [key, label, sub] of [["2d", "🗺️ 2D", "Oppefra"], ["3d", "🏎️ 3D", "Bag bilen"]]) {
+    const b = document.createElement("button");
+    b.className = "opt viewbtn";
+    b.style.background = "#9b5de5";
+    b.dataset.view = key;
+    b.innerHTML = `${label}<small>${sub}</small>`;
+    b.addEventListener("click", () => { game.view = key; updateDifficultyButtons(); });
+    row.appendChild(b);
+  }
+}
+
 function updateDifficultyButtons() {
+  document.querySelectorAll("button.viewbtn").forEach(b =>
+    b.classList.toggle("selected", b.dataset.view === game.view));
   document.querySelectorAll("button.diff").forEach(b =>
     b.classList.toggle("selected", b.dataset.key === game.difficulty));
   document.querySelectorAll("button.pcount").forEach(b =>
@@ -1278,6 +2104,7 @@ function enterSetup() {
 
 buildDifficultyButtons();
 buildPlayerButtons();
+buildViewButtons();
 
 /* =====================================================================
    KEYBOARD INPUT  (see PLAYER_KEYS at the top)
@@ -1439,10 +2266,14 @@ updateSoundButton();
    sprite is drawn rotated by the car's heading (0 = right).
    ===================================================================== */
 function makeCarSprite(img) {
-  const s = Math.min(CAR_LENGTH / img.width, CAR_MAX_WIDTH / img.height);
+  return makeOutlined(img, CAR_LENGTH, CAR_MAX_WIDTH, 2);
+}
+
+// The drawing shrunk to fit maxW x maxH, with a white outline of o px
+function makeOutlined(img, maxW, maxH, o) {
+  const s = Math.min(maxW / img.width, maxH / img.height);
   const w = Math.max(1, Math.round(img.width * s));
   const h = Math.max(1, Math.round(img.height * s));
-  const o = 2;   // outline thickness
   // white silhouette of the car
   const sil = document.createElement("canvas");
   sil.width = w; sil.height = h;
@@ -1514,13 +2345,17 @@ const race = {
 
 // A car is driven either by a person (human = { index, name, color, keysLabel })
 // or by the computer (ai = one entry from AI_CARS).
-function makeCar(img, slot, { human = null, ai = null }) {
+function makeCar(img, slot, { human = null, ai = null, backImg = null }) {
   const pos = gridPosition(game.track, slot);
   const car = {
     x: pos.x, y: pos.y, angle: pos.angle,
     speed: 0,
     img,                         // the original drawing (for the podium)
     sprite: makeCarSprite(img),
+    // 3D view: upright pictures of the car from the side and from behind
+    bbSide: makeOutlined(img, 200, 140, 4),
+    bbBack: makeOutlined(backImg || img, 200, 160, 4),
+    camAngle: pos.angle,         // 3D camera direction (follows the car with a little lag)
     isPlayer: !!human,           // true for every human player
     human,
     name: human ? human.name : ai.name,
@@ -1997,6 +2832,7 @@ function drawDust(ctx) {
 }
 
 function drawRace() {
+  if (game.view === "3d") { drawRace3D(); return; }
   const ctx = raceCtx;
   ctx.drawImage(game.track.image, 0, 0);   // grass, road, center line, start line
   drawDust(ctx);
@@ -2007,11 +2843,273 @@ function drawRace() {
 }
 
 /* =====================================================================
+   3D VIEW  ("Mode 7" style, like old-school kart racers)
+   The track picture is a flat floor. For every row of the screen below
+   the horizon we work out how far away that row is, and for every pixel
+   in the row which spot of the track picture it shows. This is done at
+   low resolution (chunky retro pixels) and scaled up.
+   Cars are flat pictures standing upright on the floor ("billboards"):
+   the drawing from behind when we see a car's back, the side drawing
+   (mirrored to face its way) when it drives across the view.
+   The physics, AI and lap counting are exactly the same as in 2D.
+   ===================================================================== */
+const view3d = {
+  track: null,       // the track whose pixels are loaded
+  tex: null,         // track picture pixels (Uint32, one per pixel)
+  grass: null,       // grass pixels, repeated outside the track picture
+  hills: null,       // hill strip along the horizon
+  buffers: {},       // low-resolution canvases, one per view size
+};
+
+const pack = (r, g, b) => (255 << 24) | (b << 16) | (g << 8) | r;   // canvas pixels are ABGR
+const SKY_TOP = [96, 176, 255];
+const SKY_HAZE = [196, 230, 255];
+
+function prepare3D() {
+  if (view3d.track !== game.track) {
+    view3d.track = game.track;
+    const data = game.track.image.getContext("2d").getImageData(0, 0, GAME_W, GAME_H).data;
+    view3d.tex = new Uint32Array(data.buffer);
+  }
+  if (!view3d.grass) {
+    const data = grassImage.getContext("2d").getImageData(0, 0, GAME_W, GAME_H).data;
+    view3d.grass = new Uint32Array(data.buffer);
+  }
+  if (!view3d.hills) view3d.hills = makeHills();
+}
+
+// A strip of hills that wraps around (whole number of waves), so it can scroll forever
+function makeHills() {
+  const c = document.createElement("canvas");
+  c.width = 1024; c.height = 64;
+  const g = c.getContext("2d");
+  for (let x = 0; x < 1024; x++) {
+    const t = x / 1024 * Math.PI * 2;
+    const far = 34 + 10 * Math.sin(3 * t) + 7 * Math.sin(7 * t + 1) + 3 * Math.sin(13 * t + 2);
+    g.fillStyle = "#8db6d6";
+    g.fillRect(x, 64 - far, 1, far);
+    const near = 16 + 8 * Math.sin(5 * t + 2) + 5 * Math.sin(11 * t);
+    g.fillStyle = "#5aa04f";
+    g.fillRect(x, 64 - near, 1, near);
+  }
+  return c;
+}
+
+// Where each player's view goes on the screen
+function viewLayouts(n) {
+  if (n === 1) return [{ x: 0, y: 0, w: GAME_W, h: GAME_H, px: PIXEL_SIZE_FULL }];
+  if (n === 2) return [
+    { x: 0, y: 0,   w: GAME_W, h: 358, px: PIXEL_SIZE_FULL },
+    { x: 0, y: 362, w: GAME_W, h: 358, px: PIXEL_SIZE_FULL },
+  ];
+  return [   // 3 players: three quarters, the fourth shows the map
+    { x: 0,   y: 0,   w: 638, h: 358, px: PIXEL_SIZE_SPLIT },
+    { x: 642, y: 0,   w: 638, h: 358, px: PIXEL_SIZE_SPLIT },
+    { x: 0,   y: 362, w: 638, h: 358, px: PIXEL_SIZE_SPLIT },
+  ];
+}
+
+function lowResBuffer(iw, ih) {
+  const key = iw + "x" + ih;
+  if (!view3d.buffers[key]) {
+    const c = document.createElement("canvas");
+    c.width = iw; c.height = ih;
+    const ctx = c.getContext("2d");
+    const img = ctx.createImageData(iw, ih);
+    view3d.buffers[key] = { c, ctx, img, px: new Uint32Array(img.data.buffer) };
+  }
+  return view3d.buffers[key];
+}
+
+// Draw what `car`'s camera sees into the rectangle vp
+function renderView3D(ctx, car, vp) {
+  const iw = Math.round(vp.w / vp.px), ih = Math.round(vp.h / vp.px);
+  const buf = lowResBuffer(iw, ih);
+  const out = buf.px, tex = view3d.tex, grass = view3d.grass;
+
+  const ang = car.camAngle;
+  const fx = Math.cos(ang), fy = Math.sin(ang);   // forward
+  const rx = -fy, ry = fx;                        // right
+  const camX = car.x - fx * CAM_DISTANCE, camY = car.y - fy * CAM_DISTANCE;
+  const horizon = Math.floor(ih * CAM_HORIZON);
+  const f = ih * CAM_FOCAL;
+
+  // Sky: gradient down to the haze at the horizon
+  for (let y = 0; y < horizon; y++) {
+    const t = y / horizon;
+    const col = pack(
+      SKY_TOP[0] + (SKY_HAZE[0] - SKY_TOP[0]) * t,
+      SKY_TOP[1] + (SKY_HAZE[1] - SKY_TOP[1]) * t,
+      SKY_TOP[2] + (SKY_HAZE[2] - SKY_TOP[2]) * t);
+    out.fill(col, y * iw, (y + 1) * iw);
+  }
+
+  // Ground: one distance per row, then step across the row
+  for (let y = horizon; y < ih; y++) {
+    const z = CAM_HEIGHT * f / (y - horizon + 0.5);   // distance of this row
+    const k = z / f;
+    let wx = camX + fx * z + rx * (-iw / 2 + 0.5) * k;
+    let wy = camY + fy * z + ry * (-iw / 2 + 0.5) * k;
+    const dx = rx * k, dy = ry * k;
+    const fog = Math.min(1, Math.max(0, (z - FOG_START) / (FOG_END - FOG_START)));
+    const row = y * iw;
+    for (let x = 0; x < iw; x++, wx += dx, wy += dy) {
+      const ix = Math.floor(wx), iy = Math.floor(wy);
+      let p;
+      if (ix >= 0 && ix < GAME_W && iy >= 0 && iy < GAME_H) p = tex[iy * GAME_W + ix];
+      else p = grass[((iy % GAME_H + GAME_H) % GAME_H) * GAME_W + ((ix % GAME_W + GAME_W) % GAME_W)];
+      if (fog > 0) {
+        const r = p & 255, g = (p >> 8) & 255, b = (p >> 16) & 255;
+        p = pack(r + (SKY_HAZE[0] - r) * fog, g + (SKY_HAZE[1] - g) * fog, b + (SKY_HAZE[2] - b) * fog);
+      }
+      out[row + x] = p;
+    }
+  }
+  buf.ctx.putImageData(buf.img, 0, 0);
+
+  // Hills on the horizon, scrolling as the camera turns (one strip = a full turn)
+  const hw = Math.PI * 2 * f, hh = ih * 0.11;
+  const off = ((ang * f) % hw + hw) % hw;
+  for (let x = -off; x < iw; x += hw) buf.ctx.drawImage(view3d.hills, x, horizon - hh, hw, hh);
+
+  // Scale the chunky picture up to the view
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(buf.c, vp.x, vp.y, vp.w, vp.h);
+  ctx.imageSmoothingEnabled = true;
+
+  // Cars as upright pictures, far ones first
+  const s = vp.w / iw;
+  const sprites = [];
+  for (const other of race.cars) {
+    const relX = other.x - camX, relY = other.y - camY;
+    const z = relX * fx + relY * fy;
+    if (z < CAM_DISTANCE * 0.45) continue;            // behind or right next to the camera
+    const lat = relX * rx + relY * ry;
+    sprites.push({ car: other, z, sx: iw / 2 + lat * f / z, sy: horizon + CAM_HEIGHT * f / z });
+  }
+  sprites.sort((a, b) => b.z - a.z);
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(vp.x, vp.y, vp.w, vp.h);
+  ctx.clip();
+  for (const sp of sprites) {
+    const o = sp.car;
+    const rel = wrapAngle(o.angle - ang);             // its direction compared with ours
+    const fromBehind = Math.abs(rel) < Math.PI / 4 || Math.abs(rel) > Math.PI * 3 / 4;
+    const pic = fromBehind ? o.bbBack : o.bbSide;
+    const worldW = fromBehind ? KART_WIDTH_3D : CAR_LENGTH * 1.15;
+    let w = worldW * f / sp.z * s;
+    let h = w * pic.height / pic.width;
+    const maxH = KART_WIDTH_3D * 1.2 * f / sp.z * s;  // very tall drawings are shrunk
+    if (h > maxH) { w *= maxH / h; h = maxH; }
+    const X = vp.x + sp.sx * s, Y = vp.y + sp.sy * s;
+    if (X + w < vp.x || X - w > vp.x + vp.w) continue;
+
+    ctx.fillStyle = "rgba(0, 0, 0, 0.3)";             // shadow
+    ctx.beginPath();
+    ctx.ellipse(X, Y, w * 0.45, Math.max(2, w * 0.08), 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.save();
+    ctx.translate(X, Y);
+    if (!fromBehind && rel < 0) ctx.scale(-1, 1);      // side drawing faces right; mirror when going left
+    ctx.drawImage(pic, -w / 2, -h, w, h);
+    ctx.restore();
+
+    if (o.isPlayer && o !== car) {                     // other players' names over their karts
+      ctx.textAlign = "center";
+      ctx.textBaseline = "bottom";
+      outlinedText(ctx, o.name, X, Y - h - 4, Math.max(12, Math.min(24, w * 0.3)), o.human.color);
+    }
+  }
+  ctx.restore();
+}
+
+// Small map: the track picture with a dot per car
+function drawMinimap(ctx, x, y, w, h) {
+  ctx.save();
+  roundRectPath(ctx, x, y, w, h, 12);
+  ctx.fillStyle = "rgba(255, 255, 255, 0.75)";
+  ctx.fill();
+  const m = 5, mw = w - m * 2, mh = h - m * 2;
+  ctx.globalAlpha = 0.9;
+  ctx.drawImage(game.track.image, x + m, y + m, mw, mh);
+  ctx.globalAlpha = 1;
+  const r = Math.max(5, w / 45);
+  for (const car of race.cars) {
+    ctx.fillStyle = car.isPlayer ? car.human.color : "#ffffff";
+    ctx.strokeStyle = "#1d2b53";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x + m + car.x / GAME_W * mw, y + m + car.y / GAME_H * mh, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// Name, lap and place in the corner of one player's view (multiplayer)
+function drawViewHUD(ctx, car, vp) {
+  const place = race.state === "finished"
+    ? game.results.findIndex(r => r.playerIndex === car.human.index) + 1
+    : standings().indexOf(car) + 1;
+  const x = vp.x + 10, y = vp.y + 10;
+  ctx.save();
+  roundRectPath(ctx, x, y, 240, 66, 14);
+  ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
+  ctx.fill();
+  ctx.fillStyle = car.human.color;
+  ctx.strokeStyle = "#1d2b53";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(x + 20, y + 22, 9, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = "#1d2b53";
+  ctx.font = "bold 20px 'Comic Sans MS', sans-serif";
+  ctx.fillText(car.name.length > 11 ? car.name.slice(0, 10) + "…" : car.name, x + 36, y + 22);
+  ctx.font = "bold 17px 'Comic Sans MS', sans-serif";
+  const info = race.state === "countdown" ? car.human.keysLabel
+             : car.finished ? "I mål 🏁" : `Omgang ${Math.min(NUM_LAPS, car.laps + 1)}/${NUM_LAPS}`;
+  ctx.fillText(info, x + 14, y + 49);
+  ctx.textAlign = "right";
+  outlinedText(ctx, `${place}.`, x + 232, y + 36, 44, ["#ffd23f", "#e0e0e0", "#e0a060"][place - 1]);
+  ctx.restore();
+}
+
+function drawRace3D() {
+  prepare3D();
+  const ctx = raceCtx;
+  const n = race.humans.length;
+  ctx.fillStyle = "#1d2b53";                        // lines between split-screen views
+  ctx.fillRect(0, 0, GAME_W, GAME_H);
+  const views = viewLayouts(n);
+  race.humans.forEach((car, i) => {
+    renderView3D(ctx, car, views[i]);
+    if (n > 1) drawViewHUD(ctx, car, views[i]);
+  });
+  if (n === 1) {
+    drawHUD(ctx);
+    drawMinimap(ctx, GAME_W - 254, 72, 240, 135);
+  } else if (n === 2) {
+    drawMinimap(ctx, GAME_W - 214, GAME_H / 2 - 56, 200, 112);
+  } else {
+    drawMinimap(ctx, 642, 362, 638, 358);           // the fourth quarter is a big map
+  }
+  drawCenterText(ctx);
+}
+
+
+/* =====================================================================
    GAME LOOP  (delta-time based, so 60 Hz and 120 Hz play the same)
    ===================================================================== */
 function updateRace(dt) {
   race.time += dt;
   race.clock += dt;
+  // 3D cameras swing round behind their cars
+  for (const car of race.humans) car.camAngle += wrapAngle(car.angle - car.camAngle) * Math.min(1, dt * CAM_FOLLOW);
 
   if (race.state === "countdown") {
     // beep once for each number: 3, 2, 1
@@ -2076,9 +3174,10 @@ function enterRace() {
     color: PLAYER_COLORS[i],
     keysLabel: PLAYER_KEYS[i].label,
   });
-  race.player = makeCar(game.cars[2], START_SLOTS.player, { human: human(0) });
-  const car1 = makeCar(game.cars[0], START_SLOTS.ai0, n >= 2 ? { human: human(1) } : { ai: AI_CARS[0] });
-  const car2 = makeCar(game.cars[1], START_SLOTS.ai1, n >= 3 ? { human: human(2) } : { ai: AI_CARS[1] });
+  const back = i => game.carBacks[i] || null;
+  race.player = makeCar(game.cars[2], START_SLOTS.player, { human: human(0), backImg: back(2) });
+  const car1 = makeCar(game.cars[0], START_SLOTS.ai0, n >= 2 ? { human: human(1), backImg: back(0) } : { ai: AI_CARS[0], backImg: back(0) });
+  const car2 = makeCar(game.cars[1], START_SLOTS.ai1, n >= 3 ? { human: human(2), backImg: back(1) } : { ai: AI_CARS[1], backImg: back(1) });
   race.cars = [car1, race.player, car2];
   race.humans = race.cars.filter(c => c.isPlayer).sort((a, b) => a.human.index - b.human.index);
   race.state = "countdown";
@@ -2213,7 +3312,7 @@ function clearConfetti() {
 document.getElementById("btn-again").addEventListener("click", () => showScreen("race"));
 document.getElementById("btn-newtrack").addEventListener("click", () => showScreen("setup"));
 document.getElementById("btn-restart").addEventListener("click", () => {
-  game.teamName = ""; game.cars = []; game.track = null; game.drawnTrack = null;
+  game.teamName = ""; resetCars(); game.track = null; game.drawnTrack = null;
   showScreen("team");
 });
 
